@@ -1,0 +1,675 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import '../data.dart';
+import '../main.dart';
+import '../state.dart';
+import '../theme.dart';
+import '../visuals.dart';
+import '../widgets.dart';
+
+Route<void> fadeRoute(Widget page) => PageRouteBuilder(
+      transitionDuration: const Duration(milliseconds: 380),
+      pageBuilder: (_, _, _) => page,
+      transitionsBuilder: (_, a, _, child) => FadeTransition(opacity: CurvedAnimation(parent: a, curve: Curves.easeOut), child: child),
+    );
+
+/// Replace the whole stack (login -> app, logout -> login).
+void resetTo(BuildContext c, Widget page) => Navigator.of(c, rootNavigator: true).pushAndRemoveUntil(fadeRoute(page), (_) => false);
+
+void enterApp(BuildContext c) => resetTo(c, const Shell());
+
+// ---------------------------------------------------------------- A01 splash
+
+class Splash extends StatelessWidget {
+  const Splash({super.key});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: C.primary,
+        body: Stack(fit: StackFit.expand, children: [
+          Image.asset('assets/images/splash_bg.png', fit: BoxFit.cover),
+          SafeArea(
+            child: Column(children: [
+              const Spacer(),
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 900),
+                curve: Curves.easeOutCubic,
+                builder: (_, t, child) => Opacity(opacity: t, child: Transform.translate(offset: Offset(0, 16 * (1 - t)), child: child)),
+                child: Column(children: [
+                  const Logo(size: 96),
+                  gap12,
+                  const Text('HadirMetrik', style: TextStyle(fontFamily: 'Momo', fontSize: 24, color: C.mid)),
+                  gap4,
+                  Text.rich(
+                    TextSpan(children: [
+                      const TextSpan(text: 'Dari '),
+                      TextSpan(text: 'absensi', style: TextStyle(fontSize: 9, color: Colors.white.withValues(alpha: .55))),
+                      const TextSpan(text: ' kehadiran menjadi keputusan'),
+                    ]),
+                    style: const TextStyle(fontFamily: 'Momo', fontSize: 12, color: Colors.white),
+                  ),
+                ]),
+              ),
+              const Spacer(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
+                child: Material(
+                  color: C.bg,
+                  shape: const StadiumBorder(),
+                  child: InkWell(
+                    customBorder: const StadiumBorder(),
+                    onTap: () => Navigator.of(context).pushReplacement(fadeRoute(const Login())),
+                    child: SizedBox(
+                      height: 72,
+                      child: Row(children: [
+                        const SizedBox(width: 32),
+                        Expanded(child: Text('Get Started', style: T.h2.copyWith(color: C.primary, fontWeight: FontWeight.w700))),
+                        Container(
+                          width: 56,
+                          height: 56,
+                          margin: const EdgeInsets.only(right: 8),
+                          decoration: const BoxDecoration(color: C.primary, shape: BoxShape.circle),
+                          child: const Icon(LucideIcons.arrowRight, color: Colors.white),
+                        ),
+                      ]),
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+          ),
+        ]),
+      );
+}
+
+// ---------------------------------------------------------------- A02 login / register
+
+class _AuthFrame extends StatelessWidget {
+  const _AuthFrame({required this.title, required this.subtitle, required this.children, this.back = false});
+  final String title, subtitle;
+  final List<Widget> children;
+  final bool back;
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: C.primary,
+        body: CustomScrollView(slivers: [
+          SliverToBoxAdapter(
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    if (back) ...[CircleBtn(LucideIcons.chevronLeft, tooltip: 'Kembali', onTap: () => Navigator.pop(context)), gap12],
+                    const Logo(size: 44),
+                    gap12,
+                    const Text('HadirMetrik', style: TextStyle(fontFamily: 'Momo', fontSize: 22, color: Colors.white)),
+                  ]),
+                  const SizedBox(height: 40),
+                  Text(title, style: T.display.copyWith(color: Colors.white)),
+                  gap4,
+                  Text(subtitle, style: T.bodyM.copyWith(color: Colors.white.withValues(alpha: .85))),
+                ]),
+              ),
+            ),
+          ),
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Container(
+              decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+              padding: EdgeInsets.fromLTRB(24, 28, 24, 16 + MediaQuery.paddingOf(context).bottom),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+            ),
+          ),
+        ]),
+      );
+}
+
+class Login extends StatefulWidget {
+  const Login({super.key});
+  @override
+  State<Login> createState() => _LoginState();
+}
+
+class _LoginState extends State<Login> {
+  final id = TextEditingController(), pass = TextEditingController();
+  bool hide = true, busy = false, tried = false;
+
+  @override
+  void dispose() {
+    id.dispose();
+    pass.dispose();
+    super.dispose();
+  }
+
+  String? get idErr => tried && id.text.trim().isEmpty ? 'ID karyawan atau email wajib diisi' : null;
+  String? get passErr => tried && pass.text.length < 6 ? 'Kata sandi minimal 6 karakter' : null;
+
+  Future<void> submit() async {
+    setState(() => tried = true);
+    if (idErr != null || passErr != null) return;
+    setState(() => busy = true);
+    await Future.delayed(const Duration(milliseconds: 900));
+    if (!mounted) return;
+    final hr = id.text.toLowerCase().contains('hr');
+    app.login(hr ? Role.hr : Role.karyawan);
+    if (hr || app.onboarded) {
+      enterApp(context);
+    } else {
+      Navigator.of(context).pushReplacement(fadeRoute(const Onboarding()));
+    }
+  }
+
+  void biometric() {
+    app
+      ..login(Role.karyawan)
+      ..onboarded = true
+      ..faceEnrolled = true;
+    enterApp(context);
+  }
+
+  @override
+  Widget build(BuildContext context) => _AuthFrame(
+        title: 'Selamat Datang',
+        subtitle: 'Masuk untuk mulai absen hari ini',
+        children: [
+          Field(
+            label: 'ID Karyawan / Email',
+            hint: 'Contoh: HM-20418',
+            icon: LucideIcons.user,
+            controller: id,
+            error: idErr,
+            helper: 'Demo: ID yang berisi "hr" masuk sebagai HR',
+            onChanged: (_) => tried ? setState(() {}) : null,
+          ),
+          gap16,
+          Field(
+            label: 'Kata Sandi',
+            hint: 'Masukkan kata sandi',
+            icon: LucideIcons.lock,
+            controller: pass,
+            obscure: hide,
+            error: passErr,
+            onChanged: (_) => tried ? setState(() {}) : null,
+            suffix: IconButton(
+              tooltip: hide ? 'Tampilkan kata sandi' : 'Sembunyikan kata sandi',
+              icon: Icon(hide ? LucideIcons.eye : LucideIcons.eyeOff, size: 20, color: C.text3),
+              onPressed: () => setState(() => hide = !hide),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(onPressed: () => _forgot(context), child: Text('Lupa kata sandi?', style: T.title.copyWith(color: C.primary))),
+          ),
+          gap8,
+          Btn('Masuk', busy: busy, onTap: submit),
+          gap16,
+          Row(children: [const Expanded(child: Divider()), Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('atau', style: T.caption)), const Expanded(child: Divider())]),
+          gap16,
+          Btn('Masuk dengan Biometrik', kind: BtnKind.light, icon: LucideIcons.scanFace, onTap: biometric),
+          gap16,
+          Center(
+            child: TextButton(
+              onPressed: () => push(context, const Register()),
+              child: Text.rich(TextSpan(text: 'Belum punya akun? ', style: T.body, children: [TextSpan(text: 'Daftar', style: T.title.copyWith(color: C.primary))])),
+            ),
+          ),
+          const Spacer(),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Icon(LucideIcons.smartphone, size: 16, color: C.text3),
+            gap8,
+            Text('Perangkat ini akan terikat ke akunmu', style: T.caption),
+          ]),
+        ],
+      );
+
+  void _forgot(BuildContext context) => showSheet(
+        context,
+        (ctx) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const SheetHead('Lupa kata sandi', subtitle: 'Tautan atur ulang dikirim ke email kantor'),
+            const Field(label: 'Email kantor', hint: 'nama@sinarmetrik.co.id', icon: LucideIcons.mail, keyboard: TextInputType.emailAddress),
+            gap20,
+            Btn('Kirim Tautan', onTap: () {
+              Navigator.pop(ctx);
+              toast(context, 'Tautan atur ulang terkirim. Cek email kantormu.', icon: LucideIcons.mail);
+            }),
+          ]),
+        ),
+      );
+}
+
+class Register extends StatefulWidget {
+  const Register({super.key});
+  @override
+  State<Register> createState() => _RegisterState();
+}
+
+class _RegisterState extends State<Register> {
+  final email = TextEditingController(), user = TextEditingController(), pass = TextEditingController();
+  bool tried = false, hide = true;
+
+  @override
+  void dispose() {
+    email.dispose();
+    user.dispose();
+    pass.dispose();
+    super.dispose();
+  }
+
+  String? get emailErr => tried && !RegExp(r'^\S+@\S+\.\S+$').hasMatch(email.text.trim()) ? 'Masukkan email yang valid' : null;
+  String? get userErr => tried && user.text.trim().length < 3 ? 'Username minimal 3 karakter' : null;
+  String? get passErr => tried && pass.text.length < 8 ? 'Kata sandi minimal 8 karakter' : null;
+
+  @override
+  Widget build(BuildContext context) => _AuthFrame(
+        back: true,
+        title: 'Buat Akun',
+        subtitle: 'Daftar dengan email kantor dari HR',
+        children: [
+          Field(label: 'Email', hint: 'nama@sinarmetrik.co.id', icon: LucideIcons.mail, controller: email, error: emailErr, keyboard: TextInputType.emailAddress, onChanged: (_) => setState(() {})),
+          gap16,
+          Field(label: 'Username', hint: 'Contoh: rina.pratiwi', icon: LucideIcons.user, controller: user, error: userErr, onChanged: (_) => setState(() {})),
+          gap16,
+          Field(
+            label: 'Kata Sandi',
+            hint: 'Minimal 8 karakter',
+            icon: LucideIcons.lock,
+            controller: pass,
+            obscure: hide,
+            error: passErr,
+            onChanged: (_) => setState(() {}),
+            suffix: IconButton(icon: Icon(hide ? LucideIcons.eye : LucideIcons.eyeOff, size: 20, color: C.text3), onPressed: () => setState(() => hide = !hide)),
+          ),
+          gap24,
+          Btn('Selanjutnya', onTap: () {
+            setState(() => tried = true);
+            if (emailErr != null || userErr != null || passErr != null) return;
+            app.login(Role.karyawan);
+            Navigator.of(context).pushAndRemoveUntil(fadeRoute(const Onboarding()), (_) => false);
+          }),
+          const Spacer(),
+          gap16,
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Icon(LucideIcons.smartphone, size: 16, color: C.text3),
+            gap8,
+            Text('Perangkat ini akan terikat ke akunmu', style: T.caption),
+          ]),
+        ],
+      );
+}
+
+// ---------------------------------------------------------------- A03 onboarding
+
+class Onboarding extends StatefulWidget {
+  const Onboarding({super.key});
+  @override
+  State<Onboarding> createState() => _OnboardingState();
+}
+
+enum _Perm { kamera, lokasi, notif }
+
+class _OnboardingState extends State<Onboarding> {
+  final pc = PageController();
+  int page = 0;
+  final granted = <_Perm, bool?>{};
+
+  static const pages = [
+    (LucideIcons.scanFace, LucideIcons.check, 'Absen pakai wajahmu', 'Cukup lihat kamera beberapa detik. Wajahmu dicocokkan dengan data terdaftar, jadi absen tidak bisa dititipkan.'),
+    (LucideIcons.mapPin, LucideIcons.shieldCheck, 'Lokasi asli, absen sah', 'GPS dicek bersama radius kantor. Aplikasi lokasi palsu dan mock location otomatis ditolak.'),
+    (LucideIcons.wallet, LucideIcons.clipboardCheck, 'Gaji & tugas transparan', 'Lihat estimasi gaji berjalan, potongan, dan tugas dari HR di satu tempat.'),
+  ];
+
+  @override
+  void dispose() {
+    pc.dispose();
+    super.dispose();
+  }
+
+  void next() => page < 3 ? pc.nextPage(duration: const Duration(milliseconds: 360), curve: Curves.easeOutCubic) : null;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: SafeArea(
+          child: Column(children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 8, 0),
+              child: Row(children: [
+                const Logo(size: 32),
+                const Spacer(),
+                AnimatedOpacity(
+                  opacity: page < 3 ? 1 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: TextButton(onPressed: page < 3 ? () => pc.animateToPage(3, duration: const Duration(milliseconds: 420), curve: Curves.easeOutCubic) : null, child: Text('Lewati', style: T.title.copyWith(color: C.primary))),
+                ),
+              ]),
+            ),
+            Expanded(
+              child: PageView(
+                controller: pc,
+                onPageChanged: (i) => setState(() => page = i),
+                children: [
+                  for (final p in pages) _Intro(p.$1, p.$2, p.$3, p.$4),
+                  _permissions(),
+                ],
+              ),
+            ),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              for (var i = 0; i < 4; i++)
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: i == page ? 24 : 8,
+                  height: 8,
+                  decoration: BoxDecoration(color: i == page ? C.primary : C.mid, borderRadius: BorderRadius.circular(8)),
+                ),
+            ]),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+              child: page < 3
+                  ? Btn('Lanjut', icon: LucideIcons.arrowRight, onTap: next)
+                  : Btn('Lanjut ke Registrasi Wajah', onTap: granted[_Perm.kamera] == true && granted[_Perm.lokasi] == true
+                      ? () {
+                          app.onboarded = true;
+                          Navigator.of(context).pushReplacement(fadeRoute(const FaceTips(first: true)));
+                        }
+                      : null),
+            ),
+          ]),
+        ),
+      );
+
+  Widget _permissions() {
+    final denied = granted.entries.where((e) => e.value == false).map((e) => e.key).toList();
+    Widget row(_Perm p, IconData icon, String title, String why) {
+      final g = granted[p];
+      return AppCard(
+        margin: const EdgeInsets.only(bottom: 12),
+        border: g == false ? C.danger.withValues(alpha: .4) : null,
+        child: Row(children: [
+          IconTile(icon, tone: g == false ? Tone.danger : Tone.sage, size: 44),
+          gap12,
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: T.title), Text(why, style: T.caption)])),
+          gap8,
+          if (g == true)
+            const Pill('Diizinkan', icon: LucideIcons.check)
+          else
+            Btn(g == false ? 'Coba lagi' : 'Izinkan', expand: false, height: 40, kind: BtnKind.soft, onTap: () => _ask(p, title)),
+        ]),
+      );
+    }
+
+    return ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 8), children: [
+      Text('Izinkan akses', style: T.h1),
+      gap8,
+      Text('HadirMetrik butuh tiga izin agar absen sah dan aman. Kami tidak melacak lokasimu di luar jam absen.', style: T.body),
+      gap20,
+      row(_Perm.kamera, LucideIcons.camera, 'Kamera', 'Untuk verifikasi wajah saat absen'),
+      row(_Perm.lokasi, LucideIcons.mapPin, 'Lokasi Presisi', 'Saat aplikasi digunakan, untuk cek radius kantor'),
+      row(_Perm.notif, LucideIcons.bell, 'Notifikasi', 'Pengingat absen, tugas baru, slip gaji'),
+      if (denied.contains(_Perm.kamera) || denied.contains(_Perm.lokasi))
+        Banner2(
+          'Tanpa ${denied.contains(_Perm.kamera) ? 'kamera' : 'lokasi presisi'}, kamu tidak bisa absen',
+          body: 'Izin ini wajib untuk Clock-In dan Clock-Out. Buka pengaturan untuk mengaktifkannya.',
+          tone: Tone.danger,
+          icon: LucideIcons.shieldAlert,
+          trailing: TextButton(
+            onPressed: () => setState(() => granted.updateAll((_, v) => v == false ? true : v)),
+            child: Text('Buka Pengaturan', style: T.title.copyWith(color: C.dangerText)),
+          ),
+        ),
+    ]);
+  }
+
+  Future<void> _ask(_Perm p, String title) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: Text('Izinkan HadirMetrik mengakses ${title.toLowerCase()}?', style: T.h3),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Jangan izinkan')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Izinkan')),
+        ],
+      ),
+    );
+    if (ok != null) setState(() => granted[p] = ok);
+  }
+}
+
+class _Intro extends StatelessWidget {
+  const _Intro(this.icon, this.badge, this.title, this.body);
+  final IconData icon, badge;
+  final String title, body;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          SizedBox(
+            width: 240,
+            height: 240,
+            child: Stack(alignment: Alignment.center, children: [
+              Container(decoration: BoxDecoration(color: C.mid.withValues(alpha: .45), shape: BoxShape.circle)),
+              Container(width: 168, height: 168, decoration: const BoxDecoration(color: C.sageSoft, shape: BoxShape.circle)),
+              Container(
+                width: 112,
+                height: 112,
+                decoration: BoxDecoration(color: C.primary, borderRadius: BorderRadius.circular(32)),
+                child: Icon(icon, size: 52, color: Colors.white),
+              ),
+              Positioned(
+                right: 44,
+                bottom: 44,
+                child: Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: C.bg, width: 4)),
+                  child: Icon(badge, size: 24, color: C.accent),
+                ),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 40),
+          Text(title, style: T.h1, textAlign: TextAlign.center),
+          gap12,
+          Text(body, style: T.body.copyWith(fontSize: 15, height: 1.5), textAlign: TextAlign.center),
+        ]),
+      );
+}
+
+// ---------------------------------------------------------------- A04 face enroll
+
+const _angles = ['Depan', 'Kiri', 'Kanan', 'Atas', 'Bawah'];
+const _angleHints = ['Lihat lurus ke kamera', 'Tengokkan kepala perlahan ke kiri', 'Tengokkan kepala perlahan ke kanan', 'Angkat dagu sedikit ke atas', 'Turunkan dagu sedikit ke bawah'];
+
+class FaceTips extends StatelessWidget {
+  const FaceTips({super.key, this.first = false});
+  final bool first;
+  @override
+  Widget build(BuildContext context) {
+    Widget tip(IconData icon, String t, bool ok) => Expanded(
+          child: AppCard(
+            padding: const EdgeInsets.all(14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              IconTile(icon, tone: ok ? Tone.sage : Tone.danger, size: 40),
+              gap12,
+              Text(t, style: T.title),
+              gap8,
+              Pill(ok ? 'Lakukan' : 'Hindari', icon: ok ? LucideIcons.check : LucideIcons.x, tone: ok ? Tone.success : Tone.danger),
+            ]),
+          ),
+        );
+    return Screen(
+      header: TopBar('Registrasi Wajah', back: !first),
+      bottom: BottomActions([Btn('Mulai Registrasi', icon: LucideIcons.scanFace, onTap: () => Navigator.of(context).pushReplacement(fadeRoute(FaceCapture(first: first))))]),
+      children: [
+        gap8,
+        Text('Siapkan wajahmu', style: T.h1),
+        gap8,
+        Text('Kami akan mengambil 5 foto dari sudut berbeda. Prosesnya kurang dari 1 menit.', style: T.body),
+        gap20,
+        Row(children: [tip(LucideIcons.sun, 'Cahaya terang dan merata', true), gap12, tip(LucideIcons.scanFace, 'Wajah lurus ke kamera', true)]),
+        gap12,
+        Row(children: [tip(LucideIcons.glasses, 'Masker atau kacamata hitam', false), gap12, tip(LucideIcons.users, 'Lebih dari satu wajah', false)]),
+        const Overline('5 sudut yang direkam'),
+        Wrap(spacing: 8, runSpacing: 8, children: [for (final a in _angles) Pill(a, tone: Tone.sage)]),
+        gap20,
+        Row(children: [
+          const Icon(LucideIcons.lock, size: 16, color: C.text3),
+          gap8,
+          Expanded(child: Text('Data wajah disimpan terenkripsi dan hanya dipakai untuk absensi.', style: T.caption)),
+        ]),
+      ],
+    );
+  }
+}
+
+class FaceCapture extends StatefulWidget {
+  const FaceCapture({super.key, this.first = false});
+  final bool first;
+  @override
+  State<FaceCapture> createState() => _FaceCaptureState();
+}
+
+class _FaceCaptureState extends State<FaceCapture> {
+  int done = 0;
+  bool blurry = false, blurShown = false;
+  Timer? timer;
+
+  @override
+  void initState() {
+    super.initState();
+    timer = Timer.periodic(const Duration(milliseconds: 1500), (_) => tick());
+  }
+
+  void tick() {
+    if (!mounted) return;
+    // Angle 4 shows the [DL] "blurry" rejection once, then succeeds.
+    if (done == 3 && !blurShown) {
+      setState(() => blurry = blurShown = true);
+      return;
+    }
+    setState(() {
+      blurry = false;
+      done++;
+    });
+    if (done == 5) {
+      timer?.cancel();
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) Navigator.of(context).pushReplacement(fadeRoute(FaceSuccess(first: widget.first)));
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final step = done.clamp(0, 4);
+    return Scaffold(
+      backgroundColor: C.primary,
+      body: Column(children: [
+        Expanded(
+          child: SafeArea(
+            bottom: false,
+            child: Stack(children: [
+              Center(child: FaceOval(width: 230, segments: 5, done: done, active: done < 5 ? done : null, blur: blurry)),
+              Positioned(
+                left: 16,
+                top: 8,
+                child: CircleBtn(LucideIcons.x, tooltip: 'Batalkan', bg: Colors.black.withValues(alpha: .35), fg: Colors.white, onTap: () => Navigator.of(context).pushReplacement(fadeRoute(FaceTips(first: widget.first)))),
+              ),
+            ]),
+          ),
+        ),
+        Container(
+          decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+          padding: EdgeInsets.fromLTRB(20, 24, 20, 20 + MediaQuery.paddingOf(context).bottom),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('SUDUT ${step + 1} DARI 5', style: T.overline.copyWith(color: C.primary)),
+            gap4,
+            AnimatedSwitcher(duration: const Duration(milliseconds: 250), child: Text(_angleHints[step], key: ValueKey(step), style: T.h2)),
+            gap16,
+            Row(children: [
+              for (var i = 0; i < 5; i++)
+                Expanded(
+                  child: Column(children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      height: 6,
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      decoration: BoxDecoration(color: i < done ? C.primary : (i == step ? C.mid : C.bg), borderRadius: BorderRadius.circular(4)),
+                    ),
+                    gap4,
+                    Text(_angles[i], style: T.small.copyWith(color: i <= step ? C.text : C.text3)),
+                  ]),
+                ),
+            ]),
+            gap16,
+            Text('Kualitas foto [DL]', style: T.caption),
+            gap8,
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              blurry ? const Pill('Gambar buram', icon: LucideIcons.triangleAlert, tone: Tone.warning) : const Pill('Fokus tajam', icon: LucideIcons.check),
+              const Pill('Cahaya cukup', icon: LucideIcons.check),
+              const Pill('1 wajah', icon: LucideIcons.check),
+            ]),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+class FaceSuccess extends StatelessWidget {
+  const FaceSuccess({super.key, this.first = false});
+  final bool first;
+  @override
+  Widget build(BuildContext context) => Screen(
+        header: const SizedBox(height: 24),
+        bottom: BottomActions([
+          Btn(first ? 'Lanjut ke Beranda' : 'Selesai', onTap: () {
+            app.faceEnrolled = true;
+            first ? enterApp(context) : Navigator.pop(context);
+          }),
+        ]),
+        children: [
+          gap24,
+          Center(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: .6, end: 1),
+              duration: const Duration(milliseconds: 600),
+              curve: Curves.elasticOut,
+              builder: (_, s, child) => Transform.scale(scale: s, child: child),
+              child: Container(
+                width: 132,
+                height: 132,
+                decoration: BoxDecoration(color: C.mid.withValues(alpha: .6), shape: BoxShape.circle),
+                alignment: Alignment.center,
+                child: Container(width: 96, height: 96, decoration: const BoxDecoration(color: C.primary, shape: BoxShape.circle), child: const Icon(LucideIcons.scanFace, size: 44, color: Colors.white)),
+              ),
+            ),
+          ),
+          gap24,
+          Text('Wajah berhasil didaftarkan', style: T.h1, textAlign: TextAlign.center),
+          gap12,
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Pill('Selesai', icon: LucideIcons.check), gap8, Text('Siap dipakai untuk absen', style: T.caption)]),
+          gap24,
+          AppCard(
+            child: Divided([
+              const InfoRow('Sudut terekam', '5 dari 5', icon: LucideIcons.scanFace),
+              const InfoRow('Skor kualitas [DL]', '96 / 100', icon: LucideIcons.sparkles),
+              InfoRow('Waktu', '${tglPendek(app.now)}, ${hm(app.now)}', icon: LucideIcons.clock),
+              const InfoRow('Penyimpanan', 'Terenkripsi', icon: LucideIcons.lock),
+            ]),
+          ),
+        ],
+      );
+}
