@@ -369,9 +369,8 @@ class _PayState extends State<Pay> {
                   Text(_money(p.net), style: T.numM.copyWith(color: C.accent)),
                 ]),
               ),
-              Center(
-                child: TextButton.icon(onPressed: () => _howTo(context), icon: const Icon(LucideIcons.calculator, size: 16), label: const Text('Cara perhitungan gaji')),
-              ),
+              gap12,
+              Btn('Cara perhitungan gaji', kind: BtnKind.light, icon: LucideIcons.calculator, height: 48, onTap: () => _howTo(context)),
               const Overline('RIWAYAT SLIP'),
               AppCard(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -473,7 +472,7 @@ class Slip extends StatelessWidget {
             ])
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(children: [SizedBox(width: 96, child: Text(k, style: T.caption)), Expanded(child: Text(v, style: T.bodyM))]),
+                child: Row(children: [Text(k, style: T.caption), gap12, Expanded(child: Text(v, textAlign: TextAlign.right, style: T.bodyM))]),
               ),
             const Overline('PENDAPATAN', padding: EdgeInsets.fromLTRB(0, 18, 0, 6)),
             for (final l in p.earnings) line(l.label, l.amount),
@@ -523,11 +522,13 @@ class History extends StatefulWidget {
 }
 
 class _HistoryState extends State<History> {
-  int filter = 0;
+  int filter = 0, month = 10;
+
+  bool isToday(AttDay d) => d.month == 10 && d.day == 7;
 
   AttDay? get today => app.clockIn == null ? null : AttDay(7, app.lateMinutes(app.clockIn!) > 0 ? Att.terlambat : Att.hadir, inT: hm(app.clockIn!), outT: app.clockOut == null ? null : hm(app.clockOut!), lateMin: app.lateMinutes(app.clockIn!).clamp(0, 999));
 
-  List<AttDay> get days => [?today, ...octDays.reversed];
+  List<AttDay> get days => month == 10 ? [?today, ...octDays.reversed] : pastDays(month).reversed.toList();
 
   void daySheet(AttDay d) => showSheet(
         context,
@@ -580,17 +581,23 @@ class _HistoryState extends State<History> {
           final all = days;
           final shown = switch (filter) { 1 => all.where((d) => d.status == Att.hadir), 2 => all.where((d) => d.status == Att.terlambat), 3 => all.where((d) => d.status == Att.cuti), _ => all }.toList();
           final count = {for (final a in Att.values) a: all.where((d) => d.status == a).length};
-          final total = all.fold(Duration.zero, (a, d) => a + (d.day == 7 ? app.worked : d.worked));
+          final total = all.fold(Duration.zero, (a, d) => a + (isToday(d) ? app.worked : d.worked));
           return Screen(
             inShell: true,
-            header: const PageHeader('Riwayat Kehadiran', subtitle: 'Oktober 2026', back: true),
+            header: PageHeader('Riwayat Kehadiran', subtitle: '${bulan[month - 1]} 2026', back: true),
             children: [
               AppCard(
                 child: Column(children: [
+                  Row(children: [
+                    CircleBtn(LucideIcons.chevronLeft, size: 40, bg: C.sageSoft, tooltip: 'Bulan sebelumnya', onTap: month > 7 ? () => setState(() => month--) : null),
+                    Expanded(child: Text('${bulan[month - 1]} 2026', textAlign: TextAlign.center, style: T.h3)),
+                    CircleBtn(LucideIcons.chevronRight, size: 40, bg: C.sageSoft, tooltip: 'Bulan berikutnya', onTap: month < 10 ? () => setState(() => month++) : null),
+                  ]),
+                  gap12,
                   MonthGrid(
                     year: 2026,
-                    month: 10,
-                    today: 7,
+                    month: month,
+                    today: month == 10 ? 7 : null,
                     dots: {for (final d in all) d.day: d.status.dot},
                     onTap: (day) {
                       final d = all.where((x) => x.day == day).firstOrNull;
@@ -636,17 +643,17 @@ class _HistoryState extends State<History> {
                       Container(
                         width: 48,
                         height: 52,
-                        decoration: BoxDecoration(color: d.day == 7 ? C.primary : C.sageSoft, borderRadius: BorderRadius.circular(14)),
+                        decoration: BoxDecoration(color: isToday(d) ? C.primary : C.sageSoft, borderRadius: BorderRadius.circular(14)),
                         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Text(d.day.toString().padLeft(2, '0'), style: T.numS.copyWith(color: d.day == 7 ? Colors.white : C.text)),
-                          Text(hariPendek[d.date.weekday - 1], style: T.small.copyWith(color: d.day == 7 ? Colors.white70 : C.text3)),
+                          Text(d.day.toString().padLeft(2, '0'), style: T.numS.copyWith(color: isToday(d) ? Colors.white : C.text)),
+                          Text(hariPendek[d.date.weekday - 1], style: T.small.copyWith(color: isToday(d) ? Colors.white70 : C.text3)),
                         ]),
                       ),
                       gap12,
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(d.status == Att.cuti ? 'Cuti Tahunan' : '${d.inT} → ${d.outT ?? 'sekarang'}', style: T.title),
-                          Text(d.status == Att.cuti ? 'Disetujui' : (d.day == 7 && d.outT == null ? 'Sedang bekerja · ${dur(app.worked)}' : dur(d.worked)), style: T.caption),
+                          Text(d.status == Att.cuti ? 'Disetujui' : (isToday(d) && d.outT == null ? 'Sedang bekerja · ${dur(app.worked)}' : dur(d.worked)), style: T.caption),
                         ]),
                       ),
                       Pill(d.status.label, icon: d.status.icon, tone: d.status.tone),

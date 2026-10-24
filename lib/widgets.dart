@@ -250,7 +250,7 @@ class Btn extends StatelessWidget {
     final (bg, fg) = switch (kind) {
       BtnKind.primary => (C.primary, Colors.white),
       BtnKind.soft => (C.accentSubtle, C.primary),
-      BtnKind.light => (C.bg, C.text),
+      BtnKind.light => (Colors.white, C.text),
       BtnKind.danger => (const Color(0xFF8A3A28), Colors.white),
       BtnKind.white => (Colors.white, C.text),
     };
@@ -260,6 +260,7 @@ class Btn extends StatelessWidget {
       decoration: BoxDecoration(
         color: enabled || busy ? bg : const Color(0xFFDDE1D8),
         borderRadius: BorderRadius.circular(999),
+        border: kind == BtnKind.light ? Border.all(color: C.border) : null,
       ),
       child: Material(
         type: MaterialType.transparency,

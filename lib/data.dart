@@ -99,12 +99,12 @@ enum Att {
 }
 
 class AttDay {
-  const AttDay(this.day, this.status, {this.inT, this.outT, this.note, this.lateMin = 0, this.overtime = 0});
-  final int day;
+  const AttDay(this.day, this.status, {this.month = 10, this.inT, this.outT, this.note, this.lateMin = 0, this.overtime = 0});
+  final int day, month;
   final Att status;
   final String? inT, outT, note;
   final int lateMin, overtime;
-  DateTime get date => DateTime(2026, 10, day);
+  DateTime get date => DateTime(2026, month, day);
   Duration get worked {
     if (inT == null || outT == null) return Duration.zero;
     Duration p(String s) => Duration(hours: int.parse(s.substring(0, 2)), minutes: int.parse(s.substring(3)));
@@ -121,6 +121,15 @@ const octDays = [
   AttDay(15, Att.cuti),
   AttDay(16, Att.cuti),
 ];
+
+// Juli sampai September: hari kerja penuh, sesekali terlambat. 17 Agustus libur.
+List<AttDay> pastDays(int month) => [
+      for (var d = 1; d <= DateTime(2026, month + 1, 0).day; d++)
+        if (DateTime(2026, month, d).weekday <= 5 && !(month == 8 && d == 17))
+          (d * month) % 9 == 0
+              ? AttDay(d, Att.terlambat, month: month, inT: '08.1${d % 10}', outT: '17.0${d % 10}', lateMin: 10 + d % 10)
+              : AttDay(d, Att.hadir, month: month, inT: '07.${50 + d % 10}', outT: '17.0${d % 10}'),
+    ];
 
 // ---------------------------------------------------------------- tasks
 

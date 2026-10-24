@@ -339,7 +339,7 @@ class _LeaveFormState extends State<LeaveForm> {
       children: [
         const Overline('LANGKAH 2 DARI 2 · ISI DETAIL', padding: EdgeInsets.fromLTRB(4, 8, 4, 10)),
         if (errs.isNotEmpty) ...[
-          Banner2('Lengkapi ${errs.length} isian berikut', body: errs.join(' · '), tone: Tone.danger),
+          Banner2('Lengkapi ${errs.length} isian berikut', body: errs.map((e) => '• $e').join('\n'), tone: Tone.danger, icon: LucideIcons.circleAlert),
           gap12,
         ],
         if (overQuota) ...[
