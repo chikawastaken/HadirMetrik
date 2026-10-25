@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../api.dart';
 import '../data.dart';
 import '../main.dart';
 import '../state.dart';
@@ -152,23 +153,27 @@ class _LoginState extends State<Login> {
     setState(() => tried = true);
     if (idErr != null || passErr != null) return;
     setState(() => busy = true);
-    await Future.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
-    final hr = id.text.toLowerCase().contains('hr');
-    app.login(hr ? Role.hr : Role.karyawan);
-    if (hr || app.onboarded) {
-      enterApp(context);
-    } else {
-      Navigator.of(context).pushReplacement(fadeRoute(const Onboarding()));
+    try {
+      final data = await Api.login(id.text.trim(), pass.text);
+      if (!mounted) return;
+      final account = data['user'] as Map<String, dynamic>?;
+      final role = account?['role'] as String?;
+      final hr = role == 'hr' || role == 'admin';
+      app.login(hr ? Role.hr : Role.karyawan);
+      if (hr || app.onboarded) {
+        enterApp(context);
+      } else {
+        Navigator.of(context).pushReplacement(fadeRoute(const Onboarding()));
+      }
+    } on ApiError catch (e) {
+      if (!mounted) return;
+      toast(context, e.message, icon: LucideIcons.triangleAlert);
+    } catch (_) {
+      if (!mounted) return;
+      toast(context, 'Tidak bisa terhubung ke server', icon: LucideIcons.triangleAlert);
+    } finally {
+      if (mounted) setState(() => busy = false);
     }
-  }
-
-  void biometric() {
-    app
-      ..login(Role.karyawan)
-      ..onboarded = true
-      ..faceEnrolled = true;
-    enterApp(context);
   }
 
   @override
@@ -182,7 +187,6 @@ class _LoginState extends State<Login> {
             icon: LucideIcons.user,
             controller: id,
             error: idErr,
-            helper: 'Demo: ID yang berisi "hr" masuk sebagai HR',
             onChanged: (_) => tried ? setState(() {}) : null,
           ),
           gap16,
@@ -207,10 +211,6 @@ class _LoginState extends State<Login> {
           gap8,
           Btn('Masuk', busy: busy, onTap: submit),
           gap16,
-          Row(children: [const Expanded(child: Divider()), Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('atau', style: T.caption)), const Expanded(child: Divider())]),
-          gap16,
-          Btn('Masuk dengan Biometrik', kind: BtnKind.light, icon: LucideIcons.scanFace, onTap: biometric),
-          gap16,
           Center(
             child: TextButton(
               onPressed: () => push(context, const Register()),
@@ -226,21 +226,7 @@ class _LoginState extends State<Login> {
         ],
       );
 
-  void _forgot(BuildContext context) => showSheet(
-        context,
-        (ctx) => Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const SheetHead('Lupa kata sandi', subtitle: 'Tautan atur ulang dikirim ke email kantor'),
-            const Field(label: 'Email kantor', hint: 'nama@sinarmetrik.co.id', icon: LucideIcons.mail, keyboard: TextInputType.emailAddress),
-            gap20,
-            Btn('Kirim Tautan', onTap: () {
-              Navigator.pop(ctx);
-              toast(context, 'Tautan atur ulang terkirim. Cek email kantormu.', icon: LucideIcons.mail);
-            }),
-          ]),
-        ),
-      );
+  void _forgot(BuildContext context) => toast(context, 'Fitur reset kata sandi belum tersedia. Hubungi HR.', icon: LucideIcons.mail);
 }
 
 class Register extends StatefulWidget {
@@ -250,30 +236,68 @@ class Register extends StatefulWidget {
 }
 
 class _RegisterState extends State<Register> {
-  final email = TextEditingController(), user = TextEditingController(), pass = TextEditingController();
-  bool tried = false, hide = true;
+  final fullName = TextEditingController();
+  final employeeNumber = TextEditingController();
+  final email = TextEditingController();
+  final pass = TextEditingController();
+  bool tried = false, hide = true, busy = false;
 
   @override
   void dispose() {
+    fullName.dispose();
     email.dispose();
-    user.dispose();
+    employeeNumber.dispose();
     pass.dispose();
     super.dispose();
   }
 
+  String? get fullNameErr => tried && fullName.text.trim().length < 3 ? 'Nama lengkap wajib diisi' : null;
+  String? get employeeNumberErr => tried && employeeNumber.text.trim().isEmpty ? 'Nomor karyawan wajib diisi' : null;
   String? get emailErr => tried && !RegExp(r'^\S+@\S+\.\S+$').hasMatch(email.text.trim()) ? 'Masukkan email yang valid' : null;
-  String? get userErr => tried && user.text.trim().length < 3 ? 'Username minimal 3 karakter' : null;
   String? get passErr => tried && pass.text.length < 8 ? 'Kata sandi minimal 8 karakter' : null;
+
+  Future<void> submit() async {
+    setState(() => tried = true);
+    if (fullNameErr != null || employeeNumberErr != null || emailErr != null || passErr != null || busy) return;
+    setState(() => busy = true);
+    try {
+      await Api.register(
+        fullName: fullName.text.trim(),
+        employeeNumber: employeeNumber.text.trim(),
+        workEmail: email.text.trim(),
+        password: pass.text,
+      );
+      if (!mounted) return;
+      Api.token = null;
+      resetTo(context, const Login());
+    } on ApiError catch (e) {
+      if (mounted) toast(context, _errorMessage(e), icon: LucideIcons.triangleAlert);
+    } catch (_) {
+      if (mounted) toast(context, 'Tidak bisa terhubung ke server', icon: LucideIcons.triangleAlert);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  String _errorMessage(ApiError error) {
+    for (final value in error.errors?.values ?? const []) {
+      if (value is List && value.isNotEmpty) return value.first.toString();
+      if (value is String && value.isNotEmpty) return value;
+    }
+    return error.message;
+  }
 
   @override
   Widget build(BuildContext context) => _AuthFrame(
         back: true,
         title: 'Buat Akun',
-        subtitle: 'Daftar dengan email kantor dari HR',
+        subtitle: 'Buat akun karyawan baru',
         children: [
+          Field(label: 'Nama lengkap', hint: 'Nama sesuai identitas', icon: LucideIcons.user, controller: fullName, error: fullNameErr, onChanged: (_) => setState(() {})),
+          gap16,
           Field(label: 'Email', hint: 'nama@sinarmetrik.co.id', icon: LucideIcons.mail, controller: email, error: emailErr, keyboard: TextInputType.emailAddress, onChanged: (_) => setState(() {})),
           gap16,
-          Field(label: 'Username', hint: 'Contoh: rina.pratiwi', icon: LucideIcons.user, controller: user, error: userErr, onChanged: (_) => setState(() {})),
+          Field(label: 'Nomor Karyawan', hint: 'Contoh: EMP-0001', icon: LucideIcons.user, controller: employeeNumber, error: employeeNumberErr, onChanged: (_) => setState(() {})),
           gap16,
           Field(
             label: 'Kata Sandi',
@@ -286,12 +310,7 @@ class _RegisterState extends State<Register> {
             suffix: IconButton(icon: Icon(hide ? LucideIcons.eye : LucideIcons.eyeOff, size: 20, color: C.text3), onPressed: () => setState(() => hide = !hide)),
           ),
           gap24,
-          Btn('Selanjutnya', onTap: () {
-            setState(() => tried = true);
-            if (emailErr != null || userErr != null || passErr != null) return;
-            app.login(Role.karyawan);
-            Navigator.of(context).pushAndRemoveUntil(fadeRoute(const Onboarding()), (_) => false);
-          }),
+          Btn('Selanjutnya', busy: busy, onTap: submit),
           const Spacer(),
           gap16,
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [

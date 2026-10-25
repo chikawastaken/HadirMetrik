@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../api.dart';
 import '../data.dart';
 import '../main.dart';
 import '../state.dart';
@@ -28,8 +29,14 @@ class Profile extends StatelessWidget {
       danger: true,
     );
     if (!ok || !context.mounted) return;
-    app.logout();
-    resetTo(context, const Login());
+    try {
+      await Api.logout();
+    } catch (_) {
+      Api.token = null;
+    } finally {
+      app.logout();
+      if (context.mounted) resetTo(context, const Login());
+    }
   }
 
   void _info(BuildContext context, String title, String body) => showSheet(
