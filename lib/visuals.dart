@@ -466,25 +466,33 @@ class MonthGrid extends StatelessWidget {
                 final isToday = day == today;
                 final sel = day == selected;
                 final weekend = c >= 5;
-                return GestureDetector(
-                  onTap: onTap == null ? null : () => onTap!(day),
-                  behavior: HitTestBehavior.opaque,
-                  child: SizedBox(
-                    height: 46,
-                    child: Center(
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 160),
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: isToday ? C.primary : (sel ? C.bg : null),
-                          borderRadius: BorderRadius.circular(12),
+                final filled = sel || (isToday && selected == null);
+                final fg = filled ? Colors.white : (weekend ? C.danger : C.text);
+                return SizedBox(
+                  height: 46,
+                  child: Center(
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: onTap == null ? null : () => onTap!(day),
+                        borderRadius: BorderRadius.circular(12),
+                        hoverColor: C.accent.withValues(alpha: .12),
+                        splashColor: C.accent.withValues(alpha: .2),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 160),
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: sel ? C.accent : (filled ? C.primary : null),
+                            borderRadius: BorderRadius.circular(12),
+                            border: isToday && !filled ? Border.all(color: C.primary, width: 1.5) : null,
+                          ),
+                          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Text('$day', style: T.bodyM.copyWith(fontWeight: FontWeight.w600, color: fg)),
+                            const SizedBox(height: 3),
+                            Container(width: 5, height: 5, decoration: BoxDecoration(shape: BoxShape.circle, color: filled ? Colors.white : dots[day] ?? Colors.transparent)),
+                          ]),
                         ),
-                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Text('$day', style: T.bodyM.copyWith(fontWeight: FontWeight.w600, color: isToday ? Colors.white : (weekend ? C.danger : C.text))),
-                          const SizedBox(height: 3),
-                          Container(width: 5, height: 5, decoration: BoxDecoration(shape: BoxShape.circle, color: isToday ? Colors.white : dots[day] ?? Colors.transparent)),
-                        ]),
                       ),
                     ),
                   ),

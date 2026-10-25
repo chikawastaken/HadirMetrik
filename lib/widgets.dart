@@ -749,6 +749,27 @@ Future<bool> confirm(BuildContext context, {required String title, required Stri
   return ok ?? false;
 }
 
+const _bln = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+String fmtRange(DateTimeRange r) => '${r.start.day} ${_bln[r.start.month - 1]} – ${r.end.day} ${_bln[r.end.month - 1]} ${r.end.year}';
+
+Future<DateTimeRange?> pickRange(BuildContext context, {DateTimeRange? initial}) => showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2025, 1, 1),
+      lastDate: DateTime(2026, 12, 31),
+      currentDate: DateTime(2026, 10, 7),
+      initialDateRange: initial,
+      helpText: 'Pilih rentang tanggal',
+      saveText: 'Simpan',
+      cancelText: 'Batal',
+      confirmText: 'Pilih',
+      fieldStartLabelText: 'Mulai',
+      fieldEndLabelText: 'Selesai',
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(colorScheme: Theme.of(ctx).colorScheme.copyWith(primary: C.accent, onPrimary: Colors.white)),
+        child: child!,
+      ),
+    );
+
 void toast(BuildContext context, String msg, {String? action, VoidCallback? onAction, bool aboveNav = false, IconData icon = LucideIcons.circleCheck}) {
   final m = ScaffoldMessenger.of(context);
   m.hideCurrentSnackBar();

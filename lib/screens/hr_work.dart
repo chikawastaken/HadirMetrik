@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../visuals.dart';
 import '../widgets.dart';
 import 'hr_main.dart';
+import 'hr_people.dart';
 import 'leave.dart';
 import 'tasks.dart';
 
@@ -376,24 +377,38 @@ class _TaskReviewState extends State<TaskReview> {
                 : null,
             children: [
               gap8,
-              Row(children: [
-                Pill(t.prio.label, icon: LucideIcons.flag, tone: t.prio.tone),
-                gap8,
-                Pill(t.status.label, icon: t.status.icon, tone: t.status.tone),
-              ]),
-              gap12,
-              Text(t.title, style: T.h2),
-              gap8,
-              Text(t.desc, style: T.body.copyWith(color: C.text2)),
-              gap16,
               AppCard(
-                child: Column(children: [
-                  InfoRow('Tenggat', t.deadline, icon: LucideIcons.calendar, valueColor: t.overdue ? C.dangerText : null),
-                  InfoRow('Divisi', t.division, icon: LucideIcons.building2),
-                  InfoRow('Dibuat', '${t.created} · ${t.from}', icon: LucideIcons.user),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    Pill(t.status.label, icon: t.status.icon, tone: t.status.tone),
+                    Pill(t.prio.label, icon: LucideIcons.flag, tone: t.prio.tone),
+                    if (t.overdue) const Pill('Lewat tenggat', icon: LucideIcons.clock, tone: Tone.danger),
+                  ]),
+                  gap12,
+                  Text(t.title, style: T.h3),
+                  if (t.desc.isNotEmpty) ...[gap4, Text(t.desc, style: T.body.copyWith(color: C.text2))],
+                  gap16,
+                  const Divider(height: 1, color: C.border),
+                  gap12,
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    for (final (i, (icon, l, v)) in [
+                      (LucideIcons.calendar, 'Tenggat', t.deadline),
+                      (LucideIcons.building2, 'Divisi', t.division),
+                      (LucideIcons.user, 'Dari', t.from.split(' ').first),
+                    ].indexed) ...[
+                      if (i > 0) gap8,
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [Icon(icon, size: 13, color: C.text3), gap4, Text(l, style: T.small)]),
+                          gap4,
+                          Text(v, style: T.bodyM.copyWith(color: i == 0 && t.overdue ? C.dangerText : null), maxLines: 2, overflow: TextOverflow.ellipsis),
+                        ]),
+                      ),
+                    ],
+                  ]),
                 ]),
               ),
-              Overline('PROGRES PER PENERIMA · ${rinaSent ? 1 : 0} DARI ${t.assignees.length} DIKIRIM'),
+              Overline('PENERIMA · ${rinaSent ? 1 : 0} DARI ${t.assignees.length} MENGIRIM BUKTI'),
               AppCard(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 child: Divided([
@@ -476,25 +491,29 @@ class _TaskReviewState extends State<TaskReview> {
                 ]),
               ),
               Overline('KOMENTAR · ${t.comments.length}'),
-              for (final c in t.comments)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Avatar(c.who == 'Kamu' ? rina.initials : personByName(c.who).initials, size: 32),
-                    gap8,
-                    Expanded(
-                      child: AppCard(
-                        padding: const EdgeInsets.all(12),
-                        radius: 16,
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Row(children: [Expanded(child: Text(c.who == 'Kamu' ? rina.name : c.who, style: T.bodyM)), Text(c.time, style: T.small)]),
-                          gap4,
-                          Text(c.text, style: T.body),
+              if (t.comments.isNotEmpty) ...[
+                AppCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  child: Divided([
+                    for (final c in t.comments)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Avatar(c.who == 'Kamu' ? rina.initials : personByName(c.who).initials, size: 32),
+                          gap12,
+                          Expanded(
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Row(children: [Expanded(child: Text(c.who == 'Kamu' ? rina.name : c.who, style: T.bodyM)), Text(c.time, style: T.small)]),
+                              gap4,
+                              Text(c.text, style: T.body),
+                            ]),
+                          ),
                         ]),
                       ),
-                    ),
                   ]),
                 ),
+                gap12,
+              ],
               Row(children: [
                 Expanded(child: Field(hint: 'Tulis komentar', controller: comment)),
                 gap8,
@@ -617,7 +636,7 @@ class ApprovalCard extends StatelessWidget {
         if (waiting && !selecting) ...[
           gap12,
           Row(children: [
-            Expanded(child: Btn('Tolak', kind: BtnKind.light, height: 44, onTap: () => rejectOne(context, r, aboveNav: aboveNav))),
+            Expanded(child: Btn('Tolak', kind: BtnKind.danger, height: 44, onTap: () => rejectOne(context, r, aboveNav: aboveNav))),
             gap12,
             Expanded(child: Btn('Setujui', height: 44, onTap: () => approveOne(context, r, aboveNav: aboveNav))),
           ]),
@@ -672,7 +691,7 @@ class _ApprovalsState extends State<Approvals> {
                   ? Padding(
                       padding: const EdgeInsets.only(bottom: navClearance - 16),
                       child: BottomActions([
-                        Btn('Tolak ${picked.length}', kind: BtnKind.light, onTap: picked.isEmpty ? null : () => bulk(false)),
+                        Btn('Tolak ${picked.length}', kind: BtnKind.danger, onTap: picked.isEmpty ? null : () => bulk(false)),
                         Btn('Setujui ${picked.length}', onTap: picked.isEmpty ? null : () => bulk(true)),
                       ]),
                     )
@@ -773,7 +792,7 @@ class ApprovalDetail extends StatelessWidget {
           header: const TopBar('Detail Pengajuan'),
           bottom: r.status == LeaveStatus.menunggu
               ? BottomActions([
-                  Btn('Tolak', kind: BtnKind.light, icon: LucideIcons.x, onTap: () async {
+                  Btn('Tolak', kind: BtnKind.danger, icon: LucideIcons.x, onTap: () async {
                     final nav = Navigator.of(context);
                     if (await rejectOne(context, r)) nav.pop();
                   }),
@@ -815,10 +834,52 @@ class ApprovalDetail extends StatelessWidget {
                 ]),
               ),
             ],
-            if (r.steps.isNotEmpty) ...[const Overline('ALUR PERSETUJUAN'), AppCard(child: Steps(r.steps))],
+            const Overline('SISA CUTI'),
+            _quota(),
+            const Overline('ALUR PERSETUJUAN'),
+            AppCard(
+              child: Steps(r.steps.isNotEmpty
+                  ? r.steps
+                  : [
+                      ('Diajukan ${r.who.name}', 'Diterima sistem', Tone.success),
+                      ('Atasan · ${bossOf(r.who)}', 'Disetujui 6 Okt', Tone.success),
+                      (
+                        'HR · Sari Wulandari',
+                        switch (r.status) { LeaveStatus.menunggu => 'Menunggu keputusanmu', LeaveStatus.disetujui => 'Disetujui', _ => 'Ditolak' },
+                        switch (r.status) { LeaveStatus.menunggu => Tone.warning, LeaveStatus.disetujui => Tone.success, _ => Tone.danger },
+                      ),
+                    ]),
+            ),
             const Overline('SURAT PENGAJUAN'),
             Letter(r),
           ],
         ),
       );
+
+  Widget _quota() {
+    final m = RegExp(r'Sisa cuti (\d+) dari (\d+) hari, setelah ini (\d+)').firstMatch(r.extra ?? '');
+    final left = int.tryParse(m?.group(1) ?? '') ?? 12 - r.who.name.length % 5;
+    final total = int.tryParse(m?.group(2) ?? '') ?? 12;
+    final after = int.tryParse(m?.group(3) ?? '') ?? left;
+    final cut = r.type == LeaveType.tahunan;
+    return AppCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const IconTile(LucideIcons.plane, tone: Tone.success),
+          gap12,
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Sisa cuti tahunan ${r.who.name.split(' ').first}', style: T.caption),
+              Text.rich(TextSpan(children: [TextSpan(text: '$left', style: T.numL.copyWith(color: C.primary)), TextSpan(text: ' dari $total hari', style: T.bodyM)])),
+            ]),
+          ),
+          if (cut) Pill('Jadi $after hari', icon: LucideIcons.arrowRight, tone: after <= 3 ? Tone.warning : Tone.sage),
+        ]),
+        gap12,
+        Bar(left / total, color: C.accent, height: 8),
+        gap8,
+        Text(cut ? 'Pengajuan ini memotong ${left - after} hari kuota' : '${r.type.label} tidak memotong kuota cuti tahunan', style: T.small),
+      ]),
+    );
+  }
 }

@@ -12,6 +12,18 @@ import 'tasks.dart';
 
 String _dec(double v) => v.toStringAsFixed(2).replaceAll('.', ',');
 
+const _shifts = ['Pagi 08.00-17.00', 'Siang 13.00-22.00', 'Malam 21.00-06.00'];
+
+/// Demo shift assignment derived from the employee ID (0 pagi, 1 siang, 2 malam).
+int shiftOf(Person p) => (int.tryParse(p.id.substring(3)) ?? 0) % 3;
+
+String bossOf(Person p) => switch (p.division) {
+      _ when p.role.contains('Supervisor') || p.role.contains('HR') => 'Direktur Operasional',
+      'Operasional' => 'Dimas Ardiansyah',
+      'Penjualan' => 'Hendra Kusuma',
+      _ => 'Sari Wulandari',
+    };
+
 /// Bottom-sheet list picker; returns the chosen index.
 Future<int?> pickOne(BuildContext context, String title, List<String> items, int current) => showSheet<int>(
       context,
@@ -42,6 +54,50 @@ class _EmployeesState extends State<Employees> {
   static const _status = ['Semua status', 'Hadir', 'Terlambat', 'Absen', 'Cuti', 'Menunggu'];
   static const _shift = ['Semua shift', 'Pagi', 'Siang', 'Malam'];
 
+  int get active => [div, status, shift].where((v) => v > 0).length;
+
+  void filter() {
+    var (d, s, h) = (div, status, shift);
+    showSheet(
+      context,
+      (ctx) => StatefulBuilder(
+        builder: (ctx, set) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const SheetHead('Filter karyawan'),
+          Flexible(
+            child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(20, 0, 20, 16), children: [
+              Text('Divisi', style: T.title),
+              gap8,
+              ChipWrap(const ['Semua divisi', ...divisions], (i) => i == d, (i) => set(() => d = i)),
+              gap16,
+              Text('Status hari ini', style: T.title),
+              gap8,
+              ChipWrap(_status, (i) => i == s, (i) => set(() => s = i)),
+              gap16,
+              Text('Shift', style: T.title),
+              gap8,
+              ChipWrap(_shift, (i) => i == h, (i) => set(() => h = i)),
+              gap20,
+              Row(children: [
+                Expanded(child: Btn('Reset', kind: BtnKind.light, onTap: () => set(() => (d, s, h) = (0, 0, 0)))),
+                gap12,
+                Expanded(
+                  child: Btn('Terapkan', onTap: () {
+                    setState(() {
+                      div = d;
+                      status = s;
+                      shift = h;
+                    });
+                    Navigator.pop(ctx);
+                  }),
+                ),
+              ]),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: app,
@@ -51,6 +107,7 @@ class _EmployeesState extends State<Employees> {
             if (q.isNotEmpty && !'${p.name} ${p.id} ${p.role}'.toLowerCase().contains(q.toLowerCase())) return false;
             if (div > 0 && p.division != divisions[div - 1]) return false;
             if (status > 0 && p.status != Att.values[status - 1]) return false;
+            if (shift > 0 && shiftOf(p) != shift - 1) return false;
             return true;
           }).toList();
           return Stack(children: [
@@ -60,27 +117,32 @@ class _EmployeesState extends State<Employees> {
                 CircleBtn(LucideIcons.download, tooltip: 'Unduh data', onTap: () => toast(context, 'Data_Karyawan_Okt2026.xlsx diunduh.', aboveNav: true, icon: LucideIcons.download)),
               ]),
               children: [
-                Field(hint: 'Cari nama, ID atau jabatan', icon: LucideIcons.search, onChanged: (v) => setState(() => q = v)),
-                gap12,
                 Row(children: [
-                  for (final (i, (items, v, set)) in [
-                    (['Semua divisi', ...divisions], div, (int x) => div = x),
-                    (_status, status, (int x) => status = x),
-                    (_shift, shift, (int x) => shift = x),
-                  ].indexed) ...[
-                    if (i > 0) gap8,
-                    Expanded(
-                      child: PickerBox(
-                        value: items[v],
-                        small: ['Divisi', 'Status', 'Shift'][i],
-                        onTap: () async {
-                          final r = await pickOne(context, ['Divisi', 'Status hari ini', 'Shift'][i], items, v);
-                          if (r != null) setState(() => set(r));
-                        },
-                      ),
-                    ),
-                  ],
+                  Expanded(child: Field(hint: 'Cari nama, ID atau jabatan', icon: LucideIcons.search, onChanged: (v) => setState(() => q = v))),
+                  gap8,
+                  Badge(
+                    isLabelVisible: active > 0,
+                    label: Text('$active'),
+                    backgroundColor: C.accent,
+                    child: CircleBtn(LucideIcons.slidersHorizontal, size: 52, bg: active > 0 ? C.accentSubtle : Colors.white, tooltip: 'Filter', onTap: filter),
+                  ),
                 ]),
+                if (active > 0) ...[
+                  gap8,
+                  Wrap(spacing: 6, runSpacing: 6, children: [
+                    for (final (v, l, clear) in [
+                      (div, div > 0 ? divisions[div - 1] : '', () => div = 0),
+                      (status, _status[status], () => status = 0),
+                      (shift, 'Shift ${_shift[shift]}', () => shift = 0),
+                    ])
+                      if (v > 0)
+                        InkWell(
+                          onTap: () => setState(clear),
+                          borderRadius: BorderRadius.circular(99),
+                          child: Pill(l, icon: LucideIcons.x, tone: Tone.sage),
+                        ),
+                  ]),
+                ],
                 gap12,
                 Text(q.isEmpty && div + status + shift == 0 ? '${214 + app.newEmployees.length} karyawan · 186 hadir hari ini' : '${list.length} hasil', style: T.caption),
                 gap8,
@@ -172,8 +234,51 @@ class _AddEmployeeState extends State<AddEmployee> {
     final n = name.text.trim();
     app.newEmployees.insert(0, Person(n, role.text.trim(), divisions[div], id, status: Att.menunggu, faceOk: false, location: ['Kantor Pusat', 'Gudang Kalasan'][loc]));
     app.touch();
-    Navigator.pop(context);
-    toast(context, invite ? '$n ditambahkan. Undangan registrasi wajah dikirim.' : '$n ditambahkan.', aboveNav: true);
+    setState(() => busy = false);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Center(child: IconTile(invite ? LucideIcons.send : LucideIcons.userCheck, tone: Tone.success, size: 52, round: true)),
+            gap12,
+            Text(invite ? 'Undangan terkirim' : 'Karyawan ditambahkan', style: T.h2, textAlign: TextAlign.center),
+            gap4,
+            Text(invite ? 'Tautan registrasi wajah dikirim ke WhatsApp dan email $n.' : '$n tersimpan tanpa undangan registrasi.', style: T.small, textAlign: TextAlign.center),
+            gap12,
+            Flexible(
+              child: SingleChildScrollView(
+                child: AppCard(
+                  color: C.sageSoft,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  child: Divided([
+                    for (final (l, v) in [
+                      ('Nama', n),
+                      ('ID', id),
+                      ('Email', email.text.trim()),
+                      ('WhatsApp', phone.text.trim()),
+                      ('Divisi · jabatan', '${divisions[div]} · ${role.text.trim()}'),
+                      ('Atasan', _boss[boss]),
+                      ('Shift', _shifts[shift]),
+                      ('Lokasi', ['Kantor Pusat Yogyakarta', 'Gudang Kalasan'][loc]),
+                      ('Mulai', 'Senin, $start Oktober 2026'),
+                      ('Total gaji', rp(_n(base) + _n(transport) + _n(meal))),
+                    ])
+                      InfoRow(l, v),
+                  ]),
+                ),
+              ),
+            ),
+            gap16,
+            Btn('Selesai', onTap: () => Navigator.pop(ctx)),
+          ]),
+        ),
+      ),
+    );
+    if (mounted) Navigator.pop(context);
   }
 
   @override
@@ -236,7 +341,7 @@ class _AddEmployeeState extends State<AddEmployee> {
           gap16,
           Text('Shift', style: T.title),
           gap8,
-          ChipWrap(const ['Pagi 08.00-17.00', 'Siang 13.00-22.00', 'Malam 21.00-06.00'], (i) => i == shift, (i) => setState(() => shift = i)),
+          ChipWrap(_shifts, (i) => i == shift, (i) => setState(() => shift = i)),
           gap16,
           Text('Lokasi kerja', style: T.title),
           gap8,
@@ -324,15 +429,33 @@ class _EmployeeDetailState extends State<EmployeeDetail> {
           ),
         ]),
       ),
-      if (risk) ...[
-        const Overline('PROFIL RISIKO [DL]'),
-        AppCard(
-          child: Column(children: [
-            for (final (l, v) in const [('Lokasi palsu', .93), ('Pola absen', .64), ('Keterlambatan', .35), ('Kualitas tugas', .30)])
-              barRow(l, v, _dec(v), color: v >= .7 ? C.danger : (v >= .5 ? C.warning : C.primary)),
+      const Overline('INFORMASI PEKERJAAN'),
+      AppCard(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Divided([
+          InfoRow('Atasan langsung', bossOf(p), icon: LucideIcons.userCheck),
+          InfoRow('Shift', _shifts[shiftOf(p)], icon: LucideIcons.clock),
+          InfoRow('Lokasi kerja', p.location, icon: LucideIcons.mapPin),
+          InfoRow('Divisi · jabatan', '${p.division} · ${p.role}', icon: LucideIcons.briefcase),
+          const InfoRow('Bergabung', '3 Mar 2023', icon: LucideIcons.calendar),
+        ]),
+      ),
+      Overline(risk ? 'PROFIL RISIKO [DL]' : 'PROFIL RISIKO'),
+      AppCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Text('Tingkat risiko', style: T.bodyM)),
+            risk || score < 70
+                ? const Pill('Tinggi', icon: LucideIcons.triangleAlert, tone: Tone.danger)
+                : (score < 85 ? const Pill('Sedang', icon: LucideIcons.minus, tone: Tone.warning) : const Pill('Rendah', icon: LucideIcons.shieldCheck)),
           ]),
-        ),
-      ],
+          gap12,
+          for (final (l, v) in risk
+              ? const [('Lokasi palsu', .93), ('Pola absen', .64), ('Keterlambatan', .35), ('Kualitas tugas', .30)]
+              : [('Lokasi palsu', .05), ('Pola absen', (100 - score) / 100), ('Keterlambatan', (100 - score) / 80), ('Kualitas tugas', (100 - score) / 120)])
+            barRow(l, v, _dec(v), color: v >= .7 ? C.danger : (v >= .5 ? C.warning : C.primary)),
+        ]),
+      ),
       const Overline('30 HARI TERAKHIR'),
       AppCard(
         child: Row(children: [

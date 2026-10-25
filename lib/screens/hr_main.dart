@@ -49,13 +49,14 @@ class HrDashboard extends StatefulWidget {
 
 class _HrDashboardState extends State<HrDashboard> {
   int period = 0, div = 0, loc = 0, bar = 2;
+  DateTimeRange? range;
 
   static const _days = ['24', '25', '28', '29', '30', '1', '2', '5', '6', '7'];
   static const _full = ['Kamis, 24 Sep', 'Jumat, 25 Sep', 'Senin, 28 Sep', 'Selasa, 29 Sep', 'Rabu, 30 Sep', 'Kamis, 1 Okt', 'Jumat, 2 Okt', 'Senin, 5 Okt', 'Selasa, 6 Okt', 'Rabu, 7 Okt'];
   static const _late = <double>[6, 9, 14, 8, 6, 9, 11, 7, 8, 9];
 
   void filter() {
-    var (p, d, l) = (period, div, loc);
+    var (r, d, l) = (range, div, loc);
     showSheet(
       context,
       (ctx) => StatefulBuilder(
@@ -66,7 +67,15 @@ class _HrDashboardState extends State<HrDashboard> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Periode', style: T.title),
               gap8,
-              ChipWrap(const ['Hari ini', 'Minggu ini', 'Bulan ini', 'Pilih tanggal'], (i) => i == p, (i) => i == 3 ? toast(ctx, 'Rentang tanggal kustom tersedia di Laporan.') : set(() => p = i)),
+              PickerBox(
+                icon: LucideIcons.calendarRange,
+                value: r == null ? 'Pilih tanggal' : fmtRange(r!),
+                trailing: LucideIcons.chevronRight,
+                onTap: () async {
+                  final x = await pickRange(ctx, initial: r);
+                  if (x != null) set(() => r = x);
+                },
+              ),
               gap16,
               Text('Divisi', style: T.title),
               gap8,
@@ -77,12 +86,12 @@ class _HrDashboardState extends State<HrDashboard> {
               ChipWrap(const ['Semua lokasi', 'Kantor Pusat Yogyakarta', 'Gudang Kalasan'], (i) => i == l, (i) => set(() => l = i)),
               gap20,
               Row(children: [
-                Expanded(child: Btn('Reset', kind: BtnKind.light, onTap: () => set(() => (p, d, l) = (0, 0, 0)))),
+                Expanded(child: Btn('Reset', kind: BtnKind.light, onTap: () => set(() => (r, d, l) = (null, 0, 0)))),
                 gap12,
                 Expanded(
                   child: Btn('Terapkan', onTap: () {
                     setState(() {
-                      period = p;
+                      range = r;
                       div = d;
                       loc = l;
                     });
@@ -127,7 +136,7 @@ class _HrDashboardState extends State<HrDashboard> {
             (186, '86,9%', '+2,1%', 9, '4,2%', 5, '2,3%', 14, '6,5%'),
             (182, '85,2%', '+1,4%', 11, '5,1%', 6, '2,8%', 15, '6,9%'),
             (184, '86,1%', '+0,8%', 10, '4,6%', 5, '2,4%', 15, '6,9%'),
-          ][period];
+          ][range != null ? 2 : period];
           final scale = div == 0 ? 1.0 : const [.38, .22, .14, .1, .16][div - 1];
           int s(int v) => (v * scale).round();
           final inc = app.incidents;
@@ -135,13 +144,24 @@ class _HrDashboardState extends State<HrDashboard> {
             inShell: true,
             header: PageHeader('Dashboard', subtitle: 'Rabu, 7 Oktober 2026 · Halo, Sari', actions: [
               CircleBtn(LucideIcons.bell, dot: true, tooltip: 'Notifikasi', onTap: activitySheet),
-              CircleBtn(LucideIcons.slidersHorizontal, dot: div + loc > 0, tooltip: 'Filter', onTap: filter),
+              CircleBtn(LucideIcons.slidersHorizontal, dot: div + loc > 0 || range != null, tooltip: 'Filter', onTap: filter),
             ]),
             children: [
-              Segmented(const ['Hari Ini', 'Minggu Ini', 'Bulan Ini'], period, (i) => setState(() => period = i)),
+              Segmented(const ['Hari Ini', 'Minggu Ini', 'Bulan Ini'], range != null ? -1 : period, (i) => setState(() {
+                    period = i;
+                    range = null;
+                  })),
               gap12,
               Row(children: [
                 Pill(div == 0 ? 'Semua divisi' : divisions[div - 1], icon: LucideIcons.building2, tone: Tone.neutral),
+                if (range != null) ...[
+                  gap8,
+                  InkWell(
+                    onTap: () => setState(() => range = null),
+                    borderRadius: BorderRadius.circular(99),
+                    child: Pill(fmtRange(range!), icon: LucideIcons.x, tone: Tone.info),
+                  ),
+                ],
                 const Spacer(),
                 Container(width: 8, height: 8, decoration: const BoxDecoration(color: C.accent, shape: BoxShape.circle)),
                 gap4,
@@ -149,7 +169,7 @@ class _HrDashboardState extends State<HrDashboard> {
               ]),
               gap12,
               Loading(
-                token: (period, div, loc),
+                token: (period, div, loc, range),
                 skeleton: const SkelList(n: 3, h: 120),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   for (final row in [
@@ -421,6 +441,8 @@ class _LateTrendState extends State<LateTrend> {
                     gap12,
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(n, style: T.title), Text(personByName(n).division, style: T.small)])),
                     Text('$m menit', style: T.numS.copyWith(color: i == 0 ? C.dangerText : C.text)),
+                    gap8,
+                    const Icon(LucideIcons.chevronRight, size: 18, color: C.text3),
                   ]),
                 ),
               ),
@@ -518,6 +540,26 @@ class _WorkHoursState extends State<WorkHours> {
             ]),
           ),
           const Overline('RISIKO BURNOUT [DL]'),
+          if (burnout.isNotEmpty) ...[
+            AppCard(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  const IconTile(LucideIcons.sparkles, tone: Tone.insight, size: 36),
+                  gap12,
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Faktor utama risiko', style: T.title), Text('${burnout.length} karyawan berisiko · Penjualan dan Gudang Kalasan', style: T.small)])),
+                ]),
+                gap12,
+                for (final (f, v, s) in const [
+                  ('Lembur berlebih', .82, '26 jam/bulan'),
+                  ('Kerja di akhir pekan', .64, '4 minggu beruntun'),
+                  ('Pulang di atas 19.00', .55, '9 hari'),
+                  ('Lonjakan jam kerja', .41, '+22% / 3 minggu'),
+                ])
+                  barRow(f, v, '${(v * 100).round()}%', sub: s, color: v >= .7 ? C.danger : C.warning),
+              ]),
+            ),
+            gap12,
+          ],
           if (burnout.isEmpty) const EmptyState(icon: LucideIcons.heartPulse, title: 'Tidak ada risiko', message: 'Semua peringatan sudah ditinjau.'),
           for (final b in burnout)
             Padding(
@@ -568,6 +610,12 @@ class _InsightsState extends State<Insights> {
   ];
   final done = <int>{};
 
+  void ignore((IconData, String, String, Tone) a) {
+    final i = anomalies.indexOf(a);
+    setState(() => anomalies.remove(a));
+    toast(context, 'Anomali diabaikan', action: 'Batalkan', onAction: () => setState(() => anomalies.insert(i, a)), aboveNav: true);
+  }
+
   void detail((IconData, String, String, Tone) a) => showSheet(
         context,
         (ctx) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -589,10 +637,22 @@ class _InsightsState extends State<Insights> {
                   ]),
                 ),
               gap16,
-              Btn('Minta Verifikasi Ulang', icon: LucideIcons.scanFace, onTap: () {
-                Navigator.pop(ctx);
-                toast(context, 'Permintaan verifikasi ulang dikirim.', aboveNav: true);
-              }),
+              Row(children: [
+                Expanded(
+                  child: Btn('Abaikan', kind: BtnKind.light, icon: LucideIcons.eyeOff, onTap: () {
+                    Navigator.pop(ctx);
+                    ignore(a);
+                  }),
+                ),
+                gap12,
+                Expanded(
+                  flex: 2,
+                  child: Btn('Minta Verifikasi', icon: LucideIcons.scanFace, onTap: () {
+                    Navigator.pop(ctx);
+                    toast(context, 'Permintaan verifikasi ulang dikirim.', aboveNav: true);
+                  }),
+                ),
+              ]),
             ]),
           ),
         ]),
@@ -670,11 +730,7 @@ class _InsightsState extends State<Insights> {
                   gap12,
                   Row(children: [
                     Expanded(
-                      child: Btn('Abaikan', kind: BtnKind.light, height: 44, onTap: () {
-                        final i = anomalies.indexOf(a);
-                        setState(() => anomalies.remove(a));
-                        toast(context, 'Anomali diabaikan', action: 'Batalkan', onAction: () => setState(() => anomalies.insert(i, a)), aboveNav: true);
-                      }),
+                      child: Btn('Abaikan', kind: BtnKind.light, height: 44, onTap: () => ignore(a)),
                     ),
                     gap12,
                     Expanded(child: Btn('Lihat Detail', height: 44, onTap: () => detail(a))),
@@ -682,29 +738,45 @@ class _InsightsState extends State<Insights> {
                 ]),
               ),
             ),
-          const Overline('REKOMENDASI TINDAKAN'),
-          AppCard(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: Column(children: [
-              for (final (i, t) in const [
-                'Kirim pengingat berangkat lebih awal ke Penjualan setiap Senin pagi',
-                'Jadwalkan pembicaraan dengan Fajar Nugroho minggu ini',
-                'Reset perangkat Agus Setiawan dan minta registrasi ulang',
-                'Minta Lina Marlina daftar ulang wajah di tempat terang',
-              ].indexed)
-                InkWell(
-                  onTap: () => setState(() => done.contains(i) ? done.remove(i) : done.add(i)),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    child: Row(children: [
-                      CheckBox2(done.contains(i)),
-                      gap12,
-                      Expanded(child: Text(t, style: T.body.copyWith(decoration: done.contains(i) ? TextDecoration.lineThrough : null))),
-                    ]),
-                  ),
+          Row(children: [
+            const Expanded(child: Overline('REKOMENDASI TINDAKAN')),
+            Padding(padding: const EdgeInsets.only(top: 10), child: Text('${done.length}/4 selesai', style: T.small)),
+          ]),
+          for (final (i, (icon, tone, prio, t, s, act)) in const [
+            (LucideIcons.bellRing, Tone.insight, 'Prioritas sedang', 'Kirim pengingat berangkat lebih awal', 'Penjualan · setiap Senin 06.30', 'Jadwalkan'),
+            (LucideIcons.messageCircle, Tone.danger, 'Prioritas tinggi', 'Jadwalkan pembicaraan dengan Fajar Nugroho', 'Minggu ini · skor risiko 0,82', 'Buat jadwal'),
+            (LucideIcons.smartphone, Tone.danger, 'Prioritas tinggi', 'Reset perangkat Agus Setiawan', 'Perangkat di-root · minta registrasi ulang', 'Reset'),
+            (LucideIcons.scanFace, Tone.warning, 'Prioritas rendah', 'Minta Lina Marlina daftar ulang wajah', 'Skor wajah 81% · di tempat terang', 'Kirim'),
+          ].indexed)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: done.contains(i) ? .6 : 1,
+                child: AppCard(
+                  padding: const EdgeInsets.all(14),
+                  radius: 20,
+                  child: Row(children: [
+                    IconTile(done.contains(i) ? LucideIcons.check : icon, tone: done.contains(i) ? Tone.success : tone, size: 40),
+                    gap12,
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(done.contains(i) ? 'Selesai' : prio, style: T.small.copyWith(color: done.contains(i) ? C.accent : tone.fg, fontWeight: FontWeight.w600)),
+                        Text(t, style: T.title.copyWith(decoration: done.contains(i) ? TextDecoration.lineThrough : null)),
+                        Text(s, style: T.small),
+                      ]),
+                    ),
+                    gap8,
+                    done.contains(i)
+                        ? TextButton(onPressed: () => setState(() => done.remove(i)), child: Text('Urungkan', style: T.small.copyWith(color: C.primary, fontWeight: FontWeight.w600)))
+                        : Btn(act, kind: BtnKind.soft, height: 36, expand: false, onTap: () {
+                            setState(() => done.add(i));
+                            toast(context, 'Tindakan "$t" ditandai selesai.', aboveNav: true);
+                          }),
+                  ]),
                 ),
-            ]),
-          ),
+              ),
+            ),
         ],
       );
 }
@@ -718,7 +790,8 @@ class Reports extends StatefulWidget {
 }
 
 class _ReportsState extends State<Reports> {
-  int step = 0, type = 1, period = 1, format = 0;
+  int step = 0, type = 1, period = 1, format = 0, loc = 0;
+  DateTimeRange? range;
   final divs = {0, 1};
   bool busy = false;
 
@@ -734,7 +807,9 @@ class _ReportsState extends State<Reports> {
   static const periods = ['Agustus 2026', 'September 2026', 'Oktober 2026'];
   static const formats = ['PDF', 'Excel', 'CSV'];
 
-  String get fileName => '${types[type].$2.split(' ').first}_${periods[period].substring(0, 3)}2026_${[for (final d in divs) divisions[d].split(' ').first].join('-')}.${['pdf', 'xlsx', 'csv'][format]}';
+  String get periodLabel => range != null ? fmtRange(range!) : periods[period];
+
+  String get fileName => '${types[type].$2.split(' ').first}_${range != null ? '${range!.start.day}-${range!.end.day}${bulanPendek[range!.end.month - 1]}' : periods[period].substring(0, 3)}2026_${[for (final d in divs) divisions[d].split(' ').first].join('-')}.${['pdf', 'xlsx', 'csv'][format]}';
 
   Future<void> generate() async {
     setState(() => busy = true);
@@ -845,7 +920,24 @@ class _ReportsState extends State<Reports> {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('Periode', style: T.title),
                     gap8,
-                    ChipWrap(periods, (i) => i == period, (i) => setState(() => period = i)),
+                    ChipWrap([...periods, 'Rentang tanggal'], (i) => range == null ? i == period : i == 3, (i) async {
+                      if (i < 3) {
+                        setState(() {
+                          period = i;
+                          range = null;
+                        });
+                        return;
+                      }
+                      final r = await pickRange(context, initial: range);
+                      if (r != null) setState(() => range = r);
+                    }),
+                    if (range != null) ...[
+                      gap8,
+                      PickerBox(icon: LucideIcons.calendarRange, small: 'Rentang tanggal', value: fmtRange(range!), trailing: LucideIcons.pencil, onTap: () async {
+                        final r = await pickRange(context, initial: range);
+                        if (r != null) setState(() => range = r);
+                      }),
+                    ],
                     gap16,
                     Text('Divisi', style: T.title),
                     gap8,
@@ -854,7 +946,7 @@ class _ReportsState extends State<Reports> {
                     gap16,
                     Text('Lokasi', style: T.title),
                     gap8,
-                    ChipWrap(const ['Semua lokasi', 'Kantor Pusat Yogyakarta', 'Gudang Kalasan'], (i) => i == 0, (_) {}),
+                    ChipWrap(const ['Semua lokasi', 'Kantor Pusat Yogyakarta', 'Gudang Kalasan'], (i) => i == loc, (i) => setState(() => loc = i)),
                   ]),
                 ),
                 gap12,
@@ -865,7 +957,7 @@ class _ReportsState extends State<Reports> {
                 AppCard(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(types[type].$2, style: T.h3),
-                    Text('${periods[period]} · ${[for (final d in divs) divisions[d]].join(', ')}', style: T.caption),
+                    Text('$periodLabel · ${[for (final d in divs) divisions[d]].join(', ')}', style: T.caption),
                     gap16,
                     Row(children: [_stat('118', 'kejadian'), _stat('14 m', 'rata-rata'), _stat('34', 'karyawan')]),
                     gap16,
@@ -1058,15 +1150,32 @@ class _SettingsDetailState extends State<SettingsDetail> {
               slider('Akurasi GPS minimal', gps, 10, 100, (v) => '${v.round()} m', (x) => gps = x, div: 9),
             ],
           3 => [
+              const Overline('JADWAL', padding: EdgeInsets.fromLTRB(4, 0, 4, 10)),
               const AppCard(
-                child: Divided([
-                  InfoRow('Tanggal gajian', '25 setiap bulan', icon: LucideIcons.calendar),
-                  InfoRow('Potongan terlambat', 'Rp 25.000 per kejadian', icon: LucideIcons.clock),
-                  InfoRow('Lembur', 'Rp 40.000 per jam', icon: LucideIcons.timer),
-                  InfoRow('Transport', 'Rp 25.000 per hari hadir', icon: LucideIcons.bus),
-                  InfoRow('Makan', 'Rp 20.000 per hari hadir', icon: LucideIcons.utensils),
-                ]),
+                child: Field(label: 'Tanggal gajian', icon: LucideIcons.calendar, initial: '25', keyboard: TextInputType.number, helper: 'Tanggal 1 sampai 28 setiap bulan'),
               ),
+              for (final (title, rows) in const [
+                ('POTONGAN', [
+                  ('Potongan keterlambatan', '25000', 'Rp per kejadian di atas toleransi', LucideIcons.clock),
+                  ('Absen tanpa keterangan', '150000', 'Rp per hari', LucideIcons.userX),
+                  ('Pulang lebih awal', '15000', 'Rp per kejadian', LucideIcons.logOut),
+                ]),
+                ('TUNJANGAN DAN LEMBUR', [
+                  ('Tarif lembur', '40000', 'Rp per jam', LucideIcons.timer),
+                  ('Tunjangan transport', '25000', 'Rp per hari hadir', LucideIcons.bus),
+                  ('Tunjangan makan', '20000', 'Rp per hari hadir', LucideIcons.utensils),
+                ]),
+              ]) ...[
+                Overline(title),
+                AppCard(
+                  child: Column(children: [
+                    for (final (i, (l, v, h, ic)) in rows.indexed) ...[
+                      if (i > 0) gap12,
+                      Field(label: l, icon: ic, initial: v, keyboard: TextInputType.number, helper: h),
+                    ],
+                  ]),
+                ),
+              ],
               gap12,
               tog('Potong otomatis keterlambatan', s: 'Di atas toleransi'),
               tog('Lembur perlu persetujuan atasan'),
@@ -1125,8 +1234,145 @@ class Payroll extends StatefulWidget {
   State<Payroll> createState() => _PayrollState();
 }
 
+const _payQs = [
+  ('Budi Santoso', 'Potongan', 'Potongan keterlambatan 3 kali, padahal 1 hari sudah izin ke atasan.', '2 hari lalu'),
+  ('Rina Pratiwi', 'Lembur', 'Lembur Sabtu 3 Okt belum masuk hitungan, padahal sudah disetujui Pak Dimas.', '1 hari lalu'),
+  ('Dewi Lestari', 'Tunjangan', 'Tunjangan makan bulan ini kurang 2 hari.', '1 hari lalu'),
+  ('Agus Setiawan', 'BPJS', 'Kenapa potongan BPJS naik dibanding September?', '5 jam lalu'),
+];
+// ponytail: answered state lives in memory for the prototype, move to AppState when it needs to survive reloads.
+final _payAnswered = <int>{};
+
 class _PayrollState extends State<Payroll> {
-  int chip = 0;
+  int chip = 0, tab = 0, when = 0;
+  final channels = {0, 1};
+
+  void answer(int i) {
+    final (n, topic, q, ago) = _payQs[i];
+    final msg = TextEditingController();
+    String? err;
+    showSheet(
+      context,
+      (ctx) => StatefulBuilder(
+        builder: (ctx, set) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SheetHead('Pertanyaan ${n.split(' ').first}', subtitle: 'Topik: $topic · $ago'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                AppCard(color: C.sageSoft, child: Text(q, style: T.body)),
+                gap12,
+                Field(label: 'Balasan', hint: 'Tulis jawaban untuk karyawan', maxLines: 3, controller: msg, error: err),
+                gap16,
+                Btn('Kirim Balasan', icon: LucideIcons.send, onTap: () {
+                  if (msg.text.trim().isEmpty) {
+                    set(() => err = 'Balasan belum diisi');
+                    return;
+                  }
+                  setState(() => _payAnswered.add(i));
+                  Navigator.pop(ctx);
+                  toast(context, 'Balasan terkirim ke $n.', aboveNav: true);
+                }),
+              ]),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> questions() => [
+        for (final (i, (n, topic, q, ago)) in _payQs.indexed)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: AppCard(
+              padding: const EdgeInsets.all(14),
+              radius: 20,
+              onTap: _payAnswered.contains(i) ? null : () => answer(i),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Avatar(personByName(n).initials, size: 40),
+                  gap12,
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(n, style: T.title), Text('$topic · $ago', style: T.small)])),
+                  _payAnswered.contains(i) ? const Pill('Dijawab', icon: LucideIcons.check) : const Pill('Menunggu', tone: Tone.warning),
+                ]),
+                gap8,
+                Text(q, style: T.body),
+                if (!_payAnswered.contains(i)) ...[
+                  gap12,
+                  Row(children: [
+                    if (app.payroll.any((r) => r.who.name == n)) ...[
+                      Expanded(child: Btn('Lihat Gaji', kind: BtnKind.light, height: 44, onTap: () => push(context, PayrollDetail(app.payroll.firstWhere((r) => r.who.name == n)), root: true))),
+                      gap12,
+                    ],
+                    Expanded(child: Btn('Balas', icon: LucideIcons.reply, height: 44, onTap: () => answer(i))),
+                  ]),
+                ],
+              ]),
+            ),
+          ),
+      ];
+
+  List<Widget> publication(int left) {
+    final done = app.payrollStep == 3;
+    final open = _payQs.length - _payAnswered.length;
+    return [
+      AppCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Cek sebelum publikasi', style: T.title),
+          gap8,
+          for (final (ok, l, s) in [
+            (left == 0, 'Semua karyawan ditinjau', left == 0 ? 'Semua sudah ditinjau' : '$left belum ditinjau'),
+            (open == 0, 'Pertanyaan gaji dijawab', open == 0 ? 'Semua sudah dijawab' : '$open belum dijawab · tidak wajib'),
+            (true, 'Penyesuaian tercatat di log audit', '3 penyesuaian bulan ini'),
+          ])
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(children: [
+                Icon(ok ? LucideIcons.circleCheck : LucideIcons.circleAlert, size: 20, color: ok ? C.accent : C.warning),
+                gap12,
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(l, style: T.bodyM), Text(s, style: T.small)])),
+              ]),
+            ),
+          if (left > 0 && !done) ...[
+            gap8,
+            Btn('Tandai Semua Ditinjau', kind: BtnKind.soft, icon: LucideIcons.checkCheck, height: 44, onTap: () {
+              for (final r in app.payroll) {
+                r.reviewed = true;
+              }
+              app.touch();
+              toast(context, 'Semua gaji ditandai ditinjau.', aboveNav: true);
+            }),
+          ],
+        ]),
+      ),
+      const Overline('JADWAL'),
+      ChipWrap(const ['Sekarang', 'Besok 08.00', 'Tanggal gajian 25 Okt'], (i) => i == when, (i) => done ? null : setState(() => when = i)),
+      const Overline('KIRIM LEWAT'),
+      AppCard(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Column(children: [
+          for (final (i, (icon, l)) in const [(LucideIcons.bell, 'Notifikasi aplikasi'), (LucideIcons.mail, 'Email kantor'), (LucideIcons.messageCircle, 'WhatsApp')].indexed)
+            InkWell(
+              onTap: done ? null : () => setState(() => channels.contains(i) ? channels.remove(i) : channels.add(i)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Row(children: [Icon(icon, size: 18, color: C.text2), gap12, Expanded(child: Text(l, style: T.bodyM)), CheckBox2(channels.contains(i))]),
+              ),
+            ),
+        ]),
+      ),
+      gap16,
+      Btn(
+        done ? 'Sudah Dipublikasikan' : (when == 0 ? 'Publikasikan Sekarang' : 'Jadwalkan Publikasi'),
+        icon: LucideIcons.send,
+        onTap: left == 0 && !done && channels.isNotEmpty ? publish : null,
+      ),
+      if (!done && (left > 0 || channels.isEmpty))
+        Padding(padding: const EdgeInsets.only(top: 8), child: Center(child: Text(left > 0 ? 'Tinjau $left karyawan lagi untuk publikasi' : 'Pilih minimal satu kanal', style: T.small))),
+    ];
+  }
 
   Future<void> publish() async {
     final ok = await confirm(context, title: 'Publikasikan slip gaji?', message: 'Slip Oktober 2026 akan terkirim ke 214 karyawan dan tidak bisa diubah lagi.', action: 'Publikasikan');
@@ -1189,9 +1435,15 @@ class _PayrollState extends State<Payroll> {
               else
                 const Banner2('Slip gaji sudah dipublikasikan', body: 'Dibayar 23 Okt 2026 ke rekening masing-masing.', tone: Tone.success, icon: LucideIcons.circleCheck),
               gap12,
-              ChipBar(const ['Semua 214', 'Ditandai 12', 'Penyesuaian 3'], chip, (i) => setState(() => chip = i)),
+              Segmented(['Karyawan', 'Pertanyaan (${_payQs.length - _payAnswered.length})', 'Publikasi'], tab, (i) => setState(() => tab = i)),
               gap12,
-              for (final r in rows)
+              if (tab == 1) ...questions(),
+              if (tab == 2) ...publication(left),
+              if (tab == 0) ...[
+                ChipBar(const ['Semua 214', 'Ditandai 12', 'Penyesuaian 3'], chip, (i) => setState(() => chip = i)),
+                gap12,
+              ],
+              for (final r in tab == 0 ? rows : const <PayRow>[])
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: AppCard(
@@ -1215,14 +1467,12 @@ class _PayrollState extends State<Payroll> {
                     ]),
                   ),
                 ),
-              Banner2('4 pertanyaan gaji belum dijawab', body: 'Paling lama dari Budi Santoso, 2 hari lalu.', tone: Tone.info, icon: LucideIcons.messageCircleQuestionMark, onTap: () => push(context, PayrollDetail(app.payroll[1]), root: true)),
-              gap16,
-              Btn(
-                app.payrollStep == 3 ? 'Sudah Dipublikasikan' : 'Publikasikan Slip Gaji',
-                icon: LucideIcons.send,
-                onTap: left == 0 && app.payrollStep < 3 ? publish : null,
-              ),
-              if (left > 0 && app.payrollStep < 3) Padding(padding: const EdgeInsets.only(top: 8), child: Center(child: Text('Tinjau $left karyawan lagi untuk publikasi', style: T.small))),
+              if (tab == 0) ...[
+                if (_payAnswered.length < _payQs.length)
+                  Banner2('${_payQs.length - _payAnswered.length} pertanyaan gaji belum dijawab', body: 'Paling lama dari Budi Santoso, 2 hari lalu.', tone: Tone.info, icon: LucideIcons.messageCircleQuestionMark, onTap: () => setState(() => tab = 1)),
+                gap16,
+                Btn(app.payrollStep == 3 ? 'Sudah Dipublikasikan' : 'Lanjut ke Publikasi', icon: LucideIcons.send, onTap: app.payrollStep == 3 ? null : () => setState(() => tab = 2)),
+              ],
             ],
           );
         },
@@ -1248,34 +1498,72 @@ class _PayrollDetailState extends State<PayrollDetail> {
   void addAdjustment() {
     final amount = TextEditingController(), reason = TextEditingController();
     var minus = false;
+    var comp = 0;
     String? err;
+    const plus = ['Lembur', 'Bonus', 'Tunjangan', 'Koreksi'];
+    const less = ['Keterlambatan', 'Absen', 'Pinjaman', 'Koreksi'];
     showSheet(
       context,
-      (ctx) => StatefulBuilder(
-        builder: (ctx, set) => Padding(
+      (ctx) => StatefulBuilder(builder: (ctx, set) {
+        final v = int.tryParse(amount.text.replaceAll('.', '')) ?? 0;
+        final s = minus ? -v : v;
+        return Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const SheetHead('Tambah penyesuaian'),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              child: Column(children: [
-                Segmented(const ['Tambah', 'Kurangi'], minus ? 1 : 0, (i) => set(() => minus = i == 1)),
-                gap12,
-                Field(label: 'Jumlah', hint: '115000', icon: LucideIcons.banknote, controller: amount, keyboard: TextInputType.number),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  for (final (i, (l, ic, t)) in const [('Tambah', LucideIcons.circlePlus, Tone.success), ('Kurangi', LucideIcons.circleMinus, Tone.danger)].indexed) ...[
+                    if (i > 0) gap12,
+                    Expanded(
+                      child: AppCard(
+                        radius: 16,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        color: (i == 1) == minus ? t.bg : Colors.white,
+                        border: (i == 1) == minus ? t.fg : C.border,
+                        onTap: () => set(() {
+                          minus = i == 1;
+                          comp = 0;
+                        }),
+                        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Icon(ic, size: 18, color: (i == 1) == minus ? t.fg : C.text3),
+                          gap8,
+                          Text(l, style: T.title.copyWith(color: (i == 1) == minus ? t.fg : C.text2)),
+                        ]),
+                      ),
+                    ),
+                  ],
+                ]),
+                gap16,
+                Text('Komponen', style: T.title),
+                gap8,
+                ChipWrap(minus ? less : plus, (i) => i == comp, (i) => set(() => comp = i)),
+                gap16,
+                Field(label: 'Jumlah', hint: '115000', icon: LucideIcons.banknote, controller: amount, keyboard: TextInputType.number, onChanged: (_) => set(() {})),
                 gap12,
                 Field(label: 'Alasan', hint: 'Wajib diisi, tercatat di log audit', controller: reason, maxLines: 2, error: err),
+                gap12,
+                AppCard(
+                  color: minus ? C.dangerSubtle : C.accentSubtle,
+                  padding: const EdgeInsets.all(12),
+                  radius: 16,
+                  child: Row(children: [
+                    Expanded(child: Text('Take-home menjadi', style: T.caption)),
+                    Text('${rp(s, sign: true)}  →  ${rp(widget.r.takeHome + s)}', style: T.numS.copyWith(color: minus ? C.dangerText : C.accent)),
+                  ]),
+                ),
                 gap16,
-                Btn('Simpan Penyesuaian', onTap: () {
-                  final v = int.tryParse(amount.text.replaceAll('.', '')) ?? 0;
+                Btn(minus ? 'Simpan Pengurangan' : 'Simpan Penambahan', kind: minus ? BtnKind.danger : BtnKind.primary, onTap: () {
                   if (v <= 0 || reason.text.trim().length < 5) {
                     set(() => err = v <= 0 ? 'Jumlah belum diisi' : 'Alasan wajib diisi, minimal 5 karakter');
                     return;
                   }
                   setState(() {
-                    final s = minus ? -v : v;
-                    adj.add((reason.text.trim(), s));
+                    adj.add(('${(minus ? less : plus)[comp]} · ${reason.text.trim()}', s));
                     widget.r.takeHome += s;
-                    history.add(('Penyesuaian ${rp(s, sign: true)} · Sari Wulandari', 'Baru saja', Tone.success));
+                    history.add(('Penyesuaian ${rp(s, sign: true)} · Sari Wulandari', 'Baru saja', minus ? Tone.danger : Tone.success));
                   });
                   app.touch();
                   Navigator.pop(ctx);
@@ -1284,8 +1572,8 @@ class _PayrollDetailState extends State<PayrollDetail> {
               ]),
             ),
           ]),
-        ),
-      ),
+        );
+      }),
     );
   }
 
@@ -1346,9 +1634,25 @@ class _PayrollDetailState extends State<PayrollDetail> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Take-home Oktober 2026', style: T.caption.copyWith(color: C.accent)),
             Text(rp(r.takeHome), style: T.numL.copyWith(color: C.accent)),
-            if (r.flags.isNotEmpty) ...[gap8, Wrap(spacing: 6, runSpacing: 6, children: [for (final (l, t, i) in r.flags) Pill(l, icon: i, tone: t)])],
           ]),
         ),
+        if (r.flags.isNotEmpty) ...[
+          const Overline('PERLU DIPERHATIKAN'),
+          AppCard(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            child: Divided([
+              for (final (l, t, i) in r.flags)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(children: [
+                    IconTile(i, tone: t, size: 36, round: true),
+                    gap12,
+                    Expanded(child: Text(l, style: T.bodyM)),
+                  ]),
+                ),
+            ]),
+          ),
+        ],
         const Overline('RINCIAN'),
         AppCard(
           child: Column(children: [
