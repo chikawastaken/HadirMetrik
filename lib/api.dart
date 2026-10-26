@@ -62,6 +62,7 @@ class Api {
     required String employeeNumber,
     required String workEmail,
     required String password,
+    required String invitationCode,
   }) async {
     return post('/register', {
       'full_name': fullName,
@@ -69,6 +70,7 @@ class Api {
       'work_email': workEmail,
       'password': password,
       'password_confirmation': password,
+      'invitation_code': invitationCode,
     });
   }
 

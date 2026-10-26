@@ -240,6 +240,7 @@ class _RegisterState extends State<Register> {
   final employeeNumber = TextEditingController();
   final email = TextEditingController();
   final pass = TextEditingController();
+  final invitationCode = TextEditingController();
   bool tried = false, hide = true, busy = false;
 
   @override
@@ -248,6 +249,7 @@ class _RegisterState extends State<Register> {
     email.dispose();
     employeeNumber.dispose();
     pass.dispose();
+    invitationCode.dispose();
     super.dispose();
   }
 
@@ -255,10 +257,11 @@ class _RegisterState extends State<Register> {
   String? get employeeNumberErr => tried && employeeNumber.text.trim().isEmpty ? 'Nomor karyawan wajib diisi' : null;
   String? get emailErr => tried && !RegExp(r'^\S+@\S+\.\S+$').hasMatch(email.text.trim()) ? 'Masukkan email yang valid' : null;
   String? get passErr => tried && pass.text.length < 8 ? 'Kata sandi minimal 8 karakter' : null;
+  String? get invitationCodeErr => tried && invitationCode.text.trim().isEmpty ? 'Kode undangan wajib diisi' : null;
 
   Future<void> submit() async {
     setState(() => tried = true);
-    if (fullNameErr != null || employeeNumberErr != null || emailErr != null || passErr != null || busy) return;
+    if (fullNameErr != null || employeeNumberErr != null || emailErr != null || passErr != null || invitationCodeErr != null || busy) return;
     setState(() => busy = true);
     try {
       await Api.register(
@@ -266,6 +269,7 @@ class _RegisterState extends State<Register> {
         employeeNumber: employeeNumber.text.trim(),
         workEmail: email.text.trim(),
         password: pass.text,
+        invitationCode: invitationCode.text.trim(),
       );
       if (!mounted) return;
       Api.token = null;
@@ -309,6 +313,8 @@ class _RegisterState extends State<Register> {
             onChanged: (_) => setState(() {}),
             suffix: IconButton(icon: Icon(hide ? LucideIcons.eye : LucideIcons.eyeOff, size: 20, color: C.text3), onPressed: () => setState(() => hide = !hide)),
           ),
+          gap16,
+          Field(label: 'Kode Undangan', hint: 'Dari HR, contoh: A1B2C3D4', icon: LucideIcons.ticket, controller: invitationCode, error: invitationCodeErr, onChanged: (_) => setState(() {})),
           gap24,
           Btn('Selanjutnya', busy: busy, onTap: submit),
           const Spacer(),
