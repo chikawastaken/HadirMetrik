@@ -86,13 +86,12 @@ class Splash extends StatelessWidget {
       );
 }
 
-// ---------------------------------------------------------------- A02 login / register
+// ---------------------------------------------------------------- A02 login
 
 class _AuthFrame extends StatelessWidget {
-  const _AuthFrame({required this.title, required this.subtitle, required this.children, this.back = false});
+  const _AuthFrame({required this.title, required this.subtitle, required this.children});
   final String title, subtitle;
   final List<Widget> children;
-  final bool back;
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: C.primary,
@@ -104,7 +103,6 @@ class _AuthFrame extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
-                    if (back) ...[CircleBtn(LucideIcons.chevronLeft, tooltip: 'Kembali', onTap: () => Navigator.pop(context)), gap12],
                     const Logo(size: 44),
                     gap12,
                     const Text('HadirMetrik', style: TextStyle(fontFamily: 'Momo', fontSize: 22, color: Colors.white)),
@@ -210,13 +208,6 @@ class _LoginState extends State<Login> {
           ),
           gap8,
           Btn('Masuk', busy: busy, onTap: submit),
-          gap16,
-          Center(
-            child: TextButton(
-              onPressed: () => push(context, const Register()),
-              child: Text.rich(TextSpan(text: 'Belum punya akun? ', style: T.body, children: [TextSpan(text: 'Daftar', style: T.title.copyWith(color: C.primary))])),
-            ),
-          ),
           const Spacer(),
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             const Icon(LucideIcons.smartphone, size: 16, color: C.text3),
@@ -227,105 +218,6 @@ class _LoginState extends State<Login> {
       );
 
   void _forgot(BuildContext context) => toast(context, 'Fitur reset kata sandi belum tersedia. Hubungi HR.', icon: LucideIcons.mail);
-}
-
-class Register extends StatefulWidget {
-  const Register({super.key});
-  @override
-  State<Register> createState() => _RegisterState();
-}
-
-class _RegisterState extends State<Register> {
-  final fullName = TextEditingController();
-  final employeeNumber = TextEditingController();
-  final email = TextEditingController();
-  final pass = TextEditingController();
-  final invitationCode = TextEditingController();
-  bool tried = false, hide = true, busy = false;
-
-  @override
-  void dispose() {
-    fullName.dispose();
-    email.dispose();
-    employeeNumber.dispose();
-    pass.dispose();
-    invitationCode.dispose();
-    super.dispose();
-  }
-
-  String? get fullNameErr => tried && fullName.text.trim().length < 3 ? 'Nama lengkap wajib diisi' : null;
-  String? get employeeNumberErr => tried && employeeNumber.text.trim().isEmpty ? 'Nomor karyawan wajib diisi' : null;
-  String? get emailErr => tried && !RegExp(r'^\S+@\S+\.\S+$').hasMatch(email.text.trim()) ? 'Masukkan email yang valid' : null;
-  String? get passErr => tried && pass.text.length < 8 ? 'Kata sandi minimal 8 karakter' : null;
-  String? get invitationCodeErr => tried && invitationCode.text.trim().isEmpty ? 'Kode undangan wajib diisi' : null;
-
-  Future<void> submit() async {
-    setState(() => tried = true);
-    if (fullNameErr != null || employeeNumberErr != null || emailErr != null || passErr != null || invitationCodeErr != null || busy) return;
-    setState(() => busy = true);
-    try {
-      await Api.register(
-        fullName: fullName.text.trim(),
-        employeeNumber: employeeNumber.text.trim(),
-        workEmail: email.text.trim(),
-        password: pass.text,
-        invitationCode: invitationCode.text.trim(),
-      );
-      if (!mounted) return;
-      Api.token = null;
-      resetTo(context, const Login());
-    } on ApiError catch (e) {
-      if (mounted) toast(context, _errorMessage(e), icon: LucideIcons.triangleAlert);
-    } catch (_) {
-      if (mounted) toast(context, 'Tidak bisa terhubung ke server', icon: LucideIcons.triangleAlert);
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  String _errorMessage(ApiError error) {
-    for (final value in error.errors?.values ?? const []) {
-      if (value is List && value.isNotEmpty) return value.first.toString();
-      if (value is String && value.isNotEmpty) return value;
-    }
-    return error.message;
-  }
-
-  @override
-  Widget build(BuildContext context) => _AuthFrame(
-        back: true,
-        title: 'Buat Akun',
-        subtitle: 'Buat akun karyawan baru',
-        children: [
-          Field(label: 'Nama lengkap', hint: 'Nama sesuai identitas', icon: LucideIcons.user, controller: fullName, error: fullNameErr, onChanged: (_) => setState(() {})),
-          gap16,
-          Field(label: 'Email', hint: 'nama@sinarmetrik.co.id', icon: LucideIcons.mail, controller: email, error: emailErr, keyboard: TextInputType.emailAddress, onChanged: (_) => setState(() {})),
-          gap16,
-          Field(label: 'Nomor Karyawan', hint: 'Contoh: EMP-0001', icon: LucideIcons.user, controller: employeeNumber, error: employeeNumberErr, onChanged: (_) => setState(() {})),
-          gap16,
-          Field(
-            label: 'Kata Sandi',
-            hint: 'Minimal 8 karakter',
-            icon: LucideIcons.lock,
-            controller: pass,
-            obscure: hide,
-            error: passErr,
-            onChanged: (_) => setState(() {}),
-            suffix: IconButton(icon: Icon(hide ? LucideIcons.eye : LucideIcons.eyeOff, size: 20, color: C.text3), onPressed: () => setState(() => hide = !hide)),
-          ),
-          gap16,
-          Field(label: 'Kode Undangan', hint: 'Dari HR, contoh: A1B2C3D4', icon: LucideIcons.ticket, controller: invitationCode, error: invitationCodeErr, onChanged: (_) => setState(() {})),
-          gap24,
-          Btn('Selanjutnya', busy: busy, onTap: submit),
-          const Spacer(),
-          gap16,
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            const Icon(LucideIcons.smartphone, size: 16, color: C.text3),
-            gap8,
-            Text('Perangkat ini akan terikat ke akunmu', style: T.caption),
-          ]),
-        ],
-      );
 }
 
 // ---------------------------------------------------------------- A03 onboarding

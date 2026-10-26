@@ -57,23 +57,6 @@ class Api {
     return data;
   }
 
-  static Future<Map<String, dynamic>> register({
-    required String fullName,
-    required String employeeNumber,
-    required String workEmail,
-    required String password,
-    required String invitationCode,
-  }) async {
-    return post('/register', {
-      'full_name': fullName,
-      'employee_number': employeeNumber,
-      'work_email': workEmail,
-      'password': password,
-      'password_confirmation': password,
-      'invitation_code': invitationCode,
-    });
-  }
-
   static Future<void> logout() async {
     try {
       await post('/logout', {});
