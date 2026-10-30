@@ -772,8 +772,9 @@ Future<DateTimeRange?> pickRange(BuildContext context, {DateTimeRange? initial})
 
 void toast(BuildContext context, String msg, {String? action, VoidCallback? onAction, bool aboveNav = false, IconData icon = LucideIcons.circleCheck}) {
   final m = ScaffoldMessenger.of(context);
-  m.hideCurrentSnackBar();
+  m.clearSnackBars();
   m.showSnackBar(SnackBar(
+    persist: false,
     behavior: SnackBarBehavior.floating,
     backgroundColor: C.toast,
     margin: EdgeInsets.fromLTRB(16, 0, 16, aboveNav ? 96 : 16),

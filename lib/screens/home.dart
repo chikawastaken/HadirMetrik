@@ -195,7 +195,7 @@ class _TaskRow extends StatelessWidget {
 }
 
 class _PayPreview extends StatelessWidget {
-  _PayPreview();
+  const _PayPreview();
   @override
   Widget build(BuildContext context) => AppCard(
         color: C.primary,
@@ -226,7 +226,7 @@ class _PayPreview extends StatelessWidget {
 
 class _Hero extends StatelessWidget {
   // Not const: rebuilt by Home's ListenableBuilder.
-  _Hero();
+  const _Hero();
 
   @override
   Widget build(BuildContext context) {
@@ -294,7 +294,7 @@ class _LiveClock extends StatelessWidget {
 }
 
 class _ClockButton extends StatefulWidget {
-  _ClockButton();
+  const _ClockButton();
   @override
   State<_ClockButton> createState() => _ClockButtonState();
 }
