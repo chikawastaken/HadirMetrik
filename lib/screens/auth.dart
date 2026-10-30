@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../api.dart';
 import '../data.dart';
+import '../deeplink.dart';
 import '../main.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -21,6 +22,17 @@ Route<void> fadeRoute(Widget page) => PageRouteBuilder(
 void resetTo(BuildContext c, Widget page) => Navigator.of(c, rootNavigator: true).pushAndRemoveUntil(fadeRoute(page), (_) => false);
 
 void enterApp(BuildContext c) => resetTo(c, const Shell());
+
+/// Where to go once a session exists and the password is permanent.
+void afterAuth(BuildContext c) {
+  if (DeepLink.hasPending) {
+    Navigator.of(c).pushReplacement(fadeRoute(const InvitationAccept()));
+  } else if (app.role == Role.hr || app.onboarded) {
+    enterApp(c);
+  } else {
+    Navigator.of(c).pushReplacement(fadeRoute(const Onboarding()));
+  }
+}
 
 // ---------------------------------------------------------------- A01 splash
 
@@ -159,11 +171,12 @@ class _LoginState extends State<Login> {
       final account = data['user'] as Map<String, dynamic>?;
       final role = account?['role'] as String?;
       final hr = role == 'hr' || role == 'admin';
+      final mustChange = data['must_change_password'] == true || account?['must_change_password'] == true;
       app.login(hr ? Role.hr : Role.karyawan);
-      if (hr || app.onboarded) {
-        enterApp(context);
+      if (mustChange) {
+        Navigator.of(context).pushReplacement(fadeRoute(const ChangePassword()));
       } else {
-        Navigator.of(context).pushReplacement(fadeRoute(const Onboarding()));
+        afterAuth(context);
       }
     } on ApiError catch (e) {
       if (!mounted) return;
@@ -227,6 +240,191 @@ class _LoginState extends State<Login> {
       );
 
   void _forgot(BuildContext context) => toast(context, 'Fitur reset kata sandi belum tersedia. Hubungi HR.', icon: LucideIcons.mail);
+}
+
+/// A03 change password — required before any other feature when the account
+/// still uses the temporary password from HR (architecture §5.9).
+class ChangePassword extends StatefulWidget {
+  const ChangePassword({super.key});
+  @override
+  State<ChangePassword> createState() => _ChangePasswordState();
+}
+
+class _ChangePasswordState extends State<ChangePassword> {
+  final current = TextEditingController(), next = TextEditingController(), confirm = TextEditingController();
+  bool tried = false, busy = false, hide = true;
+
+  @override
+  void dispose() {
+    current.dispose();
+    next.dispose();
+    confirm.dispose();
+    super.dispose();
+  }
+
+  String? get currentErr => tried && current.text.isEmpty ? 'Kata sandi saat ini wajib diisi' : null;
+  String? get nextErr => tried && next.text.length < 8 ? 'Kata sandi baru minimal 8 karakter' : null;
+  String? get confirmErr => tried && confirm.text != next.text ? 'Konfirmasi kata sandi tidak sama' : null;
+
+  Future<void> submit() async {
+    setState(() => tried = true);
+    if (currentErr != null || nextErr != null || confirmErr != null || busy) return;
+    setState(() => busy = true);
+    try {
+      await Api.changePassword(current: current.text, next: next.text);
+      if (!mounted) return;
+      toast(context, 'Kata sandi berhasil diperbarui', icon: LucideIcons.check);
+      afterAuth(context);
+    } on ApiError catch (e) {
+      if (mounted) toast(context, e.message, icon: LucideIcons.triangleAlert);
+    } catch (_) {
+      if (mounted) toast(context, 'Tidak bisa terhubung ke server', icon: LucideIcons.triangleAlert);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => _AuthFrame(
+        title: 'Ganti Kata Sandi',
+        subtitle: 'Kata sandi sementara wajib diganti sebelum melanjutkan',
+        children: [
+          Field(
+            label: 'Kata sandi saat ini',
+            hint: 'Dari HR',
+            icon: LucideIcons.lock,
+            controller: current,
+            obscure: hide,
+            error: currentErr,
+            onChanged: (_) => tried ? setState(() {}) : null,
+          ),
+          gap16,
+          Field(
+            label: 'Kata sandi baru',
+            hint: 'Minimal 8 karakter',
+            icon: LucideIcons.lock,
+            controller: next,
+            obscure: hide,
+            error: nextErr,
+            onChanged: (_) => tried ? setState(() {}) : null,
+            suffix: IconButton(
+              tooltip: hide ? 'Tampilkan kata sandi' : 'Sembunyikan kata sandi',
+              icon: Icon(hide ? LucideIcons.eye : LucideIcons.eyeOff, size: 20, color: C.text3),
+              onPressed: () => setState(() => hide = !hide),
+            ),
+          ),
+          gap16,
+          Field(
+            label: 'Ulangi kata sandi baru',
+            hint: 'Ketik ulang kata sandi baru',
+            icon: LucideIcons.lock,
+            controller: confirm,
+            obscure: hide,
+            error: confirmErr,
+            onChanged: (_) => tried ? setState(() {}) : null,
+          ),
+          gap24,
+          Btn('Simpan Kata Sandi', busy: busy, onTap: submit),
+          const Spacer(),
+          gap16,
+          Row(children: [
+            const Icon(LucideIcons.info, size: 16, color: C.text3),
+            gap8,
+            Expanded(child: Text('Gunakan kata sandi yang hanya kamu ketahui.', style: T.caption)),
+          ]),
+        ],
+      );
+}
+
+/// Opens the invitation from the email link once a session exists.
+class InvitationAccept extends StatefulWidget {
+  const InvitationAccept({super.key});
+  @override
+  State<InvitationAccept> createState() => _InvitationAcceptState();
+}
+
+class _InvitationAcceptState extends State<InvitationAccept> {
+  String? _token;
+  String? _error;
+  bool _busy = true;
+  bool _notOwned = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _token = DeepLink.take();
+    _accept();
+  }
+
+  Future<void> _accept() async {
+    final token = _token;
+    if (token == null) {
+      setState(() {
+        _busy = false;
+        _error = 'Link undangan tidak ditemukan. Buka kembali link dari email.';
+      });
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+      _notOwned = false;
+    });
+    try {
+      await Api.acceptInvitation(token);
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(fadeRoute(const FaceTips(first: true)));
+    } on ApiError catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e.message;
+        _notOwned = e.code == 'INVITATION_NOT_OWNED';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = 'Tidak bisa terhubung ke server. Periksa koneksi lalu coba lagi.';
+      });
+    }
+  }
+
+  /// The invitation belongs to another employee: drop the current session,
+  /// keep the token, and let them sign in with the right account.
+  Future<void> _switchAccount() async {
+    DeepLink.remember(_token!);
+    Api.token = null;
+    app.logout();
+    if (!mounted) return;
+    resetTo(context, const Login());
+  }
+
+  @override
+  Widget build(BuildContext context) => _AuthFrame(
+        title: 'Registrasi Wajah',
+        subtitle: _error == null ? 'Memverifikasi undanganmu' : 'Undangan belum bisa dipakai',
+        children: [
+          if (_busy) ...[
+            gap24,
+            const Center(child: CircularProgressIndicator()),
+            gap16,
+            Text('Mohon tunggu sebentar...', textAlign: TextAlign.center, style: T.body),
+          ] else ...[
+            gap24,
+            const Center(child: Icon(LucideIcons.triangleAlert, size: 48, color: C.danger)),
+            gap12,
+            Text(_error!, textAlign: TextAlign.center, style: T.body),
+            gap24,
+            if (_notOwned)
+              Btn('Masuk dengan akun karyawan', icon: LucideIcons.logIn, onTap: _switchAccount)
+            else
+              Btn('Coba Lagi', icon: LucideIcons.refreshCw, onTap: _accept),
+            gap12,
+            Btn('Kembali', kind: BtnKind.soft, onTap: () => afterAuth(context)),
+          ],
+        ],
+      );
 }
 
 class Register extends StatefulWidget {

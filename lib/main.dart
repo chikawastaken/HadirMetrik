@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import 'api.dart';
+import 'deeplink.dart';
 import 'screens/auth.dart';
 import 'screens/clock.dart';
 import 'screens/home.dart';
@@ -16,18 +20,62 @@ import 'screens/tasks.dart';
 import 'state.dart';
 import 'theme.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(statusBarColor: Colors.transparent));
+  try {
+    final initial = await AppLinks().getInitialLink();
+    final token = initial == null ? null : InvitationLink.tokenFrom(initial);
+    if (token != null) DeepLink.remember(token);
+  } catch (_) {
+    // Deep links are unavailable on this platform; start normally.
+  }
   runApp(const HadirMetrik());
 }
 
-class HadirMetrik extends StatelessWidget {
+final navigatorKey = GlobalKey<NavigatorState>();
+
+class HadirMetrik extends StatefulWidget {
   const HadirMetrik({super.key});
+
+  @override
+  State<HadirMetrik> createState() => _HadirMetrikState();
+}
+
+class _HadirMetrikState extends State<HadirMetrik> {
+  StreamSubscription<Uri>? _links;
+
+  @override
+  void initState() {
+    super.initState();
+    _links = AppLinks().uriLinkStream.listen(_onLink, onError: (_) {});
+  }
+
+  @override
+  void dispose() {
+    _links?.cancel();
+    super.dispose();
+  }
+
+  /// Invitation links arrive while the app is already running.
+  void _onLink(Uri uri) {
+    final token = InvitationLink.tokenFrom(uri);
+    if (token == null) return;
+    DeepLink.remember(token);
+
+    final nav = navigatorKey.currentState;
+    if (nav == null) return;
+    if (Api.token == null) {
+      nav.pushAndRemoveUntil(fadeRoute(const Login()), (_) => false);
+    } else {
+      nav.push(fadeRoute(const InvitationAccept()));
+    }
+  }
 
   @override
   Widget build(BuildContext context) => MaterialApp(
         title: 'HadirMetrik',
+        navigatorKey: navigatorKey,
         debugShowCheckedModeBanner: false,
         theme: buildTheme(),
         // Phone-width canvas on tablets and desktop browsers; the design is 440 wide.
@@ -44,7 +92,9 @@ class HadirMetrik extends StatelessWidget {
             }),
           ),
         ),
-        home: const Splash(),
+        // A cold-start invitation link goes straight to login; the token waits
+        // in DeepLink until a session exists.
+        home: DeepLink.hasPending ? const Login() : const Splash(),
       );
 }
 

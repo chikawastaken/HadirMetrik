@@ -11,12 +11,24 @@ class ApiError implements Exception {
   ApiError(this.message, [this.errors]);
   final String message;
   final Map<String, dynamic>? errors;
+
+  /// Machine-readable reason from `errors.code`, e.g. `INVITATION_NOT_OWNED`.
+  String? get code {
+    final value = errors?['code'];
+    if (value is List && value.isNotEmpty) return value.first.toString();
+    if (value is String) return value;
+    return null;
+  }
+
   @override
   String toString() => message;
 }
 
 class Api {
   static String? token;
+
+  /// Overridable for tests.
+  static http.Client client = http.Client();
 
   static Map<String, String> get _headers => {
         'Content-Type': 'application/json',
@@ -38,14 +50,24 @@ class Api {
   }
 
   static Future<Map<String, dynamic>> post(String path, Map<String, dynamic> data) async =>
-      _handle(await http
+      _handle(await client
           .post(Uri.parse('$baseUrl$path'), headers: _headers, body: jsonEncode(data))
           .timeout(const Duration(seconds: 15)));
 
   static Future<Map<String, dynamic>> get(String path) async =>
-      _handle(await http
+      _handle(await client
           .get(Uri.parse('$baseUrl$path'), headers: _headers)
           .timeout(const Duration(seconds: 15)));
+
+  /// Reserves the invitation for the signed-in employee (architecture §4.8).
+  static Future<Map<String, dynamic>> acceptInvitation(String token) => post('/invitations/$token/accept', {});
+
+  static Future<Map<String, dynamic>> changePassword({required String current, required String next}) =>
+      post('/auth/change-password', {
+        'current_password': current,
+        'new_password': next,
+        'new_password_confirmation': next,
+      });
 
   static Future<Map<String, dynamic>> login(String identifier, String password) async {
     final data = await post('/login', {

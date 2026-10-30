@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../api.dart';
 import '../data.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -205,10 +206,66 @@ class _AddEmployeeState extends State<AddEmployee> {
   final name = TextEditingController(), email = TextEditingController(), phone = TextEditingController(), role = TextEditingController();
   final base = TextEditingController(text: '5.200.000'), transport = TextEditingController(text: '575.000'), meal = TextEditingController(text: '690.000');
   int div = 0, shift = 0, loc = 0, boss = 0, start = 19;
-  bool invite = true, tried = false, busy = false;
-  late final id = 'HM-0${315 + app.newEmployees.length}';
+  bool invite = true, tried = false, busy = false, loading = true;
+  String? loadError;
 
-  static const _boss = ['Dimas Ardiansyah', 'Hendra Kusuma', 'Sari Wulandari'];
+  List<Map<String, dynamic>> _divisions = [], _shifts = [], _locations = [], _managers = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOptions();
+  }
+
+  Future<void> _loadOptions() async {
+    setState(() {
+      loading = true;
+      loadError = null;
+    });
+    try {
+      final data = await Api.get('/hr/employees/create-options');
+      if (!mounted) return;
+      final divisions = _rows(data['divisions']);
+      final shifts = _rows(data['shifts']);
+      final locations = _rows(data['work_locations']);
+      final managers = _rows(data['managers']);
+      setState(() {
+        _divisions = divisions;
+        _shifts = shifts;
+        _locations = locations;
+        _managers = managers;
+        div = 0;
+        shift = 0;
+        loc = 0;
+        boss = 0;
+        loading = false;
+        if (divisions.isEmpty || shifts.isEmpty || locations.isEmpty) {
+          loadError = 'Master data divisi, shift, atau lokasi belum lengkap. Hubungi admin.';
+        }
+      });
+    } on ApiError catch (e) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        loadError = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        loadError = 'Tidak bisa memuat data master. Periksa koneksi ke server.';
+      });
+    }
+  }
+
+  List<Map<String, dynamic>> _rows(Object? value) => (value as List? ?? const [])
+      .whereType<Map>()
+      .map((row) => Map<String, dynamic>.from(row))
+      .toList();
+
+  String _label(List<Map<String, dynamic>> rows, int index) => (rows[index]['name'] as String?) ?? '-';
+
+  List<String> _options(List<Map<String, dynamic>> rows) => [for (final row in rows) (row['name'] as String?) ?? '-'];
 
   int _n(TextEditingController c) => int.tryParse(c.text.replaceAll('.', '')) ?? 0;
 
@@ -228,61 +285,142 @@ class _AddEmployeeState extends State<AddEmployee> {
   Future<void> save() async {
     setState(() => tried = true);
     if ([nameErr, emailErr, phoneErr, roleErr].any((e) => e != null)) return;
+    if (loading || loadError != null || _divisions.isEmpty || _shifts.isEmpty || _locations.isEmpty) {
+      toast(context, loadError ?? 'Data master belum siap.', icon: LucideIcons.triangleAlert);
+      return;
+    }
     setState(() => busy = true);
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    if (!mounted) return;
     final n = name.text.trim();
-    app.newEmployees.insert(0, Person(n, role.text.trim(), divisions[div], id, status: Att.menunggu, faceOk: false, location: ['Kantor Pusat', 'Gudang Kalasan'][loc]));
-    app.touch();
-    setState(() => busy = false);
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Center(child: IconTile(invite ? LucideIcons.send : LucideIcons.userCheck, tone: Tone.success, size: 52, round: true)),
-            gap12,
-            Text(invite ? 'Undangan terkirim' : 'Karyawan ditambahkan', style: T.h2, textAlign: TextAlign.center),
-            gap4,
-            Text(invite ? 'Tautan registrasi wajah dikirim ke WhatsApp dan email $n.' : '$n tersimpan tanpa undangan registrasi.', style: T.small, textAlign: TextAlign.center),
-            gap12,
-            Flexible(
-              child: SingleChildScrollView(
-                child: AppCard(
-                  color: C.sageSoft,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                  child: Divided([
-                    for (final (l, v) in [
-                      ('Nama', n),
-                      ('ID', id),
-                      ('Email', email.text.trim()),
-                      ('WhatsApp', phone.text.trim()),
-                      ('Divisi · jabatan', '${divisions[div]} · ${role.text.trim()}'),
-                      ('Atasan', _boss[boss]),
-                      ('Shift', _shifts[shift]),
-                      ('Lokasi', ['Kantor Pusat Yogyakarta', 'Gudang Kalasan'][loc]),
-                      ('Mulai', 'Senin, $start Oktober 2026'),
-                      ('Total gaji', rp(_n(base) + _n(transport) + _n(meal))),
-                    ])
-                      InfoRow(l, v),
-                  ]),
+    try {
+      final data = await Api.createEmployee({
+        'full_name': n,
+        'email': email.text.trim(),
+        'phone': phone.text.trim().isEmpty ? null : phone.text.trim(),
+        'division_id': _divisions[div]['id'],
+        'job_title': role.text.trim(),
+        'manager_id': _managers.isEmpty ? null : _managers[boss]['id'],
+        'employment_start': '2026-10-${start.toString().padLeft(2, '0')}',
+        'employment_status': 'probation',
+        'shift_id': _shifts[shift]['id'],
+        'work_location_id': _locations[loc]['id'],
+        'compensation': {
+          'base_salary': _n(base),
+          'transport_allowance': _n(transport),
+          'meal_allowance': _n(meal),
+        },
+        'send_invitation': invite,
+        'invitation_channels': ['email'],
+        'invitation_expires_in_days': 3,
+      });
+      if (!mounted) return;
+
+      final employee = Map<String, dynamic>.from(data['employee'] as Map? ?? const {});
+      final employeeNumber = (employee['employee_number'] as String?) ?? '-';
+      final invitation = data['invitation'] is Map ? Map<String, dynamic>.from(data['invitation'] as Map) : null;
+      final password = (data['initial_password'] as String?) ?? '-';
+
+      app.newEmployees.insert(0, Person(n, role.text.trim(), _label(_divisions, div), employeeNumber, status: Att.menunggu, faceOk: false, location: _label(_locations, loc)));
+      app.touch();
+      setState(() => busy = false);
+
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Center(child: IconTile(invitation != null ? LucideIcons.send : LucideIcons.userCheck, tone: Tone.success, size: 52, round: true)),
+              gap12,
+              Text(invitation != null ? 'Undangan dibuat' : 'Karyawan ditambahkan', style: T.h2, textAlign: TextAlign.center),
+              gap4,
+              Text(
+                invitation != null ? 'Email undangan registrasi wajah sedang dikirim ke ${email.text.trim()}.' : '$n tersimpan tanpa undangan registrasi.',
+                style: T.small,
+                textAlign: TextAlign.center,
+              ),
+              gap12,
+              Flexible(
+                child: SingleChildScrollView(
+                  child: AppCard(
+                    color: C.sageSoft,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    child: Divided([
+                      for (final (l, v) in [
+                        ('Nama', n),
+                        ('ID karyawan', employeeNumber),
+                        ('Email', email.text.trim()),
+                        ('Divisi · jabatan', '${_label(_divisions, div)} · ${role.text.trim()}'),
+                        if (_managers.isNotEmpty) ('Atasan', _label(_managers, boss)),
+                        ('Shift', _label(_shifts, shift)),
+                        ('Lokasi', _label(_locations, loc)),
+                        ('Mulai', 'Senin, $start Oktober 2026'),
+                        ('Total gaji', rp(_n(base) + _n(transport) + _n(meal))),
+                        ('Kata sandi sementara', password),
+                      ])
+                        InfoRow(l, v),
+                    ]),
+                  ),
                 ),
               ),
-            ),
-            gap16,
-            Btn('Selesai', onTap: () => Navigator.pop(ctx)),
-          ]),
+              gap8,
+              Text('Tampilkan kata sandi ini sekali saja, lalu sampaikan ke karyawan lewat kanal terpisah.', style: T.caption, textAlign: TextAlign.center),
+              gap16,
+              Btn('Selesai', onTap: () => Navigator.pop(ctx)),
+            ]),
+          ),
         ),
-      ),
-    );
-    if (mounted) Navigator.pop(context);
+      );
+      if (mounted) Navigator.pop(context);
+    } on ApiError catch (e) {
+      if (!mounted) return;
+      toast(context, _errorText(e), icon: LucideIcons.triangleAlert);
+    } catch (_) {
+      if (!mounted) return;
+      toast(context, 'Tidak bisa terhubung ke server', icon: LucideIcons.triangleAlert);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  String _errorText(ApiError error) {
+    for (final value in error.errors?.values ?? const []) {
+      if (value is List && value.isNotEmpty) return value.first.toString();
+      if (value is String && value.isNotEmpty) return value;
+    }
+    return error.message;
   }
 
   @override
-  Widget build(BuildContext context) => Screen(
+  Widget build(BuildContext context) {
+    if (loading || loadError != null) {
+      return Screen(
+        header: const TopBar('Tambah Karyawan'),
+        bottom: BottomActions([Btn('Kembali', kind: BtnKind.light, onTap: () => Navigator.pop(context))]),
+        children: [
+          gap24,
+          if (loading) ...[
+            const Center(child: CircularProgressIndicator()),
+            gap16,
+            Text('Memuat divisi, shift, dan lokasi kerja...', textAlign: TextAlign.center, style: T.body),
+          ] else ...[
+            const Center(child: Icon(LucideIcons.triangleAlert, size: 44, color: C.danger)),
+            gap12,
+            Text(loadError!, textAlign: TextAlign.center, style: T.body),
+            gap16,
+            Btn('Coba Lagi', icon: LucideIcons.refreshCw, onTap: _loadOptions),
+          ],
+        ],
+      );
+    }
+
+    final divisionNames = _options(_divisions);
+    final shiftNames = _options(_shifts);
+    final locationNames = _options(_locations);
+    final managerNames = _options(_managers);
+
+    return Screen(
         header: const TopBar('Tambah Karyawan'),
         bottom: BottomActions([
           Btn('Batal', kind: BtnKind.light, onTap: () => Navigator.pop(context)),
@@ -292,7 +430,7 @@ class _AddEmployeeState extends State<AddEmployee> {
           const Overline('DATA DIRI'),
           Field(label: 'Nama lengkap', hint: 'Sesuai KTP', icon: LucideIcons.user, controller: name, error: nameErr, onChanged: (_) => tried ? setState(() {}) : null),
           gap12,
-          Field(label: 'ID karyawan', initial: id, icon: LucideIcons.idCard, readOnly: true, helper: 'Dibuat otomatis'),
+          Field(label: 'ID karyawan', initial: 'Otomatis', icon: LucideIcons.idCard, readOnly: true, helper: 'Dibuat otomatis oleh sistem'),
           gap12,
           Field(label: 'Email kantor', hint: 'nama@sinarmetrik.co.id', icon: LucideIcons.mail, controller: email, keyboard: TextInputType.emailAddress, error: emailErr, onChanged: (_) => tried ? setState(() {}) : null),
           gap12,
@@ -300,10 +438,10 @@ class _AddEmployeeState extends State<AddEmployee> {
           const Overline('PEKERJAAN'),
           PickerBox(
             small: 'Divisi',
-            value: divisions[div],
+            value: _label(_divisions, div),
             icon: LucideIcons.building2,
             onTap: () async {
-              final r = await pickOne(context, 'Divisi', divisions, div);
+              final r = await pickOne(context, 'Divisi', divisionNames, div);
               if (r != null) setState(() => div = r);
             },
           ),
@@ -312,12 +450,14 @@ class _AddEmployeeState extends State<AddEmployee> {
           gap12,
           PickerBox(
             small: 'Atasan langsung',
-            value: _boss[boss],
+            value: _managers.isEmpty ? 'Tanpa atasan' : _label(_managers, boss),
             icon: LucideIcons.userCheck,
-            onTap: () async {
-              final r = await pickOne(context, 'Atasan langsung', _boss, boss);
-              if (r != null) setState(() => boss = r);
-            },
+            onTap: _managers.isEmpty
+                ? null
+                : () async {
+                    final r = await pickOne(context, 'Atasan langsung', managerNames, boss);
+                    if (r != null) setState(() => boss = r);
+                  },
           ),
           gap12,
           PickerBox(
@@ -341,11 +481,11 @@ class _AddEmployeeState extends State<AddEmployee> {
           gap16,
           Text('Shift', style: T.title),
           gap8,
-          ChipWrap(_shifts, (i) => i == shift, (i) => setState(() => shift = i)),
+          ChipWrap(shiftNames, (i) => i == shift, (i) => setState(() => shift = i)),
           gap16,
           Text('Lokasi kerja', style: T.title),
           gap8,
-          ChipWrap(const ['Kantor Pusat Yogyakarta', 'Gudang Kalasan'], (i) => i == loc, (i) => setState(() => loc = i)),
+          ChipWrap(locationNames, (i) => i == loc, (i) => setState(() => loc = i)),
           const Overline('GAJI'),
           Field(label: 'Gaji pokok', icon: LucideIcons.banknote, controller: base, keyboard: TextInputType.number, onChanged: (_) => setState(() {})),
           gap12,
@@ -363,9 +503,10 @@ class _AddEmployeeState extends State<AddEmployee> {
             ]),
           ),
           gap12,
-          ToggleTile('Kirim undangan registrasi wajah', invite, (v) => setState(() => invite = v), subtitle: 'Lewat WhatsApp dan email kantor'),
+          ToggleTile('Kirim undangan registrasi wajah', invite, (v) => setState(() => invite = v), subtitle: 'Lewat email kantor'),
         ],
       );
+  }
 }
 
 // ---------------------------------------------------------------- C06 detail karyawan
