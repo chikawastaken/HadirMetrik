@@ -205,7 +205,8 @@ class AddEmployee extends StatefulWidget {
 class _AddEmployeeState extends State<AddEmployee> {
   final name = TextEditingController(), email = TextEditingController(), phone = TextEditingController(), role = TextEditingController();
   final base = TextEditingController(text: '5.200.000'), transport = TextEditingController(text: '575.000'), meal = TextEditingController(text: '690.000');
-  int div = 0, shift = 0, loc = 0, boss = 0, start = 19;
+  int div = 0, shift = 0, loc = 0, boss = 0;
+  DateTime start = DateTime(2026, 10, 19);
   bool invite = true, tried = false, busy = false, loading = true;
   String? loadError;
 
@@ -299,7 +300,7 @@ class _AddEmployeeState extends State<AddEmployee> {
         'division_id': _divisions[div]['id'],
         'job_title': role.text.trim(),
         'manager_id': _managers.isEmpty ? null : _managers[boss]['id'],
-        'employment_start': '2026-10-${start.toString().padLeft(2, '0')}',
+        'employment_start': start.toIso8601String().split('T').first,
         'employment_status': 'probation',
         'shift_id': _shifts[shift]['id'],
         'work_location_id': _locations[loc]['id'],
@@ -355,7 +356,7 @@ class _AddEmployeeState extends State<AddEmployee> {
                         if (_managers.isNotEmpty) ('Atasan', _label(_managers, boss)),
                         ('Shift', _label(_shifts, shift)),
                         ('Lokasi', _label(_locations, loc)),
-                        ('Mulai', 'Senin, $start Oktober 2026'),
+                        ('Mulai', tanggal(start)),
                         ('Total gaji', rp(_n(base) + _n(transport) + _n(meal))),
                         ('Kata sandi sementara', password),
                       ])
@@ -462,21 +463,24 @@ class _AddEmployeeState extends State<AddEmployee> {
           gap12,
           PickerBox(
             small: 'Tanggal mulai',
-            value: 'Senin, $start Oktober 2026',
+            value: tanggal(start),
             icon: LucideIcons.calendar,
-            onTap: () => showSheet(
-              context,
-              (ctx) => Column(mainAxisSize: MainAxisSize.min, children: [
-                const SheetHead('Tanggal mulai'),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                  child: MonthGrid(year: 2026, month: 10, selected: start, onTap: (d) {
-                    setState(() => start = d);
-                    Navigator.pop(ctx);
-                  }),
+            onTap: () async {
+              final d = await showDatePicker(
+                context: context,
+                firstDate: DateTime(2025, 1, 1),
+                lastDate: DateTime(2027, 12, 31),
+                initialDate: start,
+                helpText: 'Tanggal mulai',
+                cancelText: 'Batal',
+                confirmText: 'Pilih',
+                builder: (ctx, child) => Theme(
+                  data: Theme.of(ctx).copyWith(colorScheme: Theme.of(ctx).colorScheme.copyWith(primary: C.accent, onPrimary: Colors.white)),
+                  child: child!,
                 ),
-              ]),
-            ),
+              );
+              if (d != null) setState(() => start = d);
+            },
           ),
           gap16,
           Text('Shift', style: T.title),
