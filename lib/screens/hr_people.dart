@@ -338,7 +338,9 @@ class _AddEmployeeState extends State<AddEmployee> {
               Text(invitation != null ? 'Undangan dibuat' : 'Karyawan ditambahkan', style: T.h2, textAlign: TextAlign.center),
               gap4,
               Text(
-                invitation != null ? 'Email undangan registrasi wajah sedang dikirim ke ${email.text.trim()}.' : '$n tersimpan tanpa undangan registrasi.',
+                invitation != null
+                    ? 'Email undangan dikirim ke ${email.text.trim()}. Karyawan membuat kata sandinya sendiri dari link tersebut.'
+                    : '$n tersimpan tanpa undangan registrasi.',
                 style: T.small,
                 textAlign: TextAlign.center,
               ),
@@ -361,13 +363,17 @@ class _AddEmployeeState extends State<AddEmployee> {
                         ('Total gaji', rp(_n(base) + _n(transport) + _n(meal))),
                       ])
                         InfoRow(l, v),
-                      _PasswordRow(password),
+                      // Without an invitation the employee has no link to set a
+                      // password from, so the temporary one is the only way in.
+                      if (invitation == null) _PasswordRow(password),
                     ]),
                   ),
                 ),
               ),
-              gap8,
-              Text('Tampilkan kata sandi ini sekali saja, lalu sampaikan ke karyawan lewat kanal terpisah.', style: T.caption, textAlign: TextAlign.center),
+              if (invitation == null) ...[
+                gap8,
+                Text('Tampilkan kata sandi ini sekali saja, lalu sampaikan ke karyawan lewat kanal terpisah.', style: T.caption, textAlign: TextAlign.center),
+              ],
               gap16,
               Btn('Selesai', onTap: () => Navigator.pop(ctx)),
             ]),
