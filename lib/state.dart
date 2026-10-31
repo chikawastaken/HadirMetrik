@@ -98,16 +98,20 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void recordClock() {
+  Future<void> recordClock() async {
     final t = now;
-    if (clockIn == null) {
-      clockIn = t;
-      notifs.insert(0, Notif(NCat.absensi, 'Clock-in tercatat ${hm(t)}', 'Kantor Pusat Yogyakarta · wajah dan lokasi valid', hm(t), 'HARI INI'));
-    } else {
-      clockOut = t;
-      notifs.insert(0, Notif(NCat.absensi, 'Clock-out tercatat ${hm(t)}', 'Total kerja hari ini ${dur(worked)}', hm(t), 'HARI INI'));
-    }
-    notifyListeners();
+    try {
+      if (clockIn == null) {
+        final res = await Api.clockIn();
+        clockIn = t;
+        notifs.insert(0, Notif(NCat.absensi, 'Clock-in tercatat ${hm(t)}', 'Kantor Pusat Yogyakarta · wajah dan lokasi valid', hm(t), 'HARI INI'));
+      } else {
+        final res = await Api.clockOut();
+        clockOut = t;
+        notifs.insert(0, Notif(NCat.absensi, 'Clock-out tercatat ${hm(t)}', 'Total kerja hari ini ${dur(worked)}', hm(t), 'HARI INI'));
+      }
+      notifyListeners();
+    } catch (_) {}
   }
 
   void toggleSalary() {
