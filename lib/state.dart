@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'data.dart';
+import 'models/employee_profile.dart';
 
 enum Role { karyawan, hr }
 
@@ -31,6 +32,7 @@ class AppState extends ChangeNotifier {
   bool faceEnrolled = false;
   Sim sim = Sim.normal;
   bool hideSalary = true;
+  EmployeeProfile? profile;
 
   // Demo clock: the prototype day is Rabu, 7 Oktober 2026, starting 07.52.
   DateTime _base = DateTime(2026, 10, 7, 7, 52);
@@ -67,6 +69,14 @@ class AppState extends ChangeNotifier {
   int get unread => notifs.where((n) => !n.read).length;
 
   void touch() => notifyListeners();
+
+  Future<void> fetchProfile() async {
+    try {
+      final res = await Api.getProfile();
+      profile = EmployeeProfile.fromJson(res);
+      notifyListeners();
+    } catch (_) {}
+  }
 
   void login(Role r) {
     role = r;

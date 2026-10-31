@@ -100,13 +100,13 @@ class Profile extends StatelessWidget {
         children: [
           AppCard(
             child: Column(children: [
-              Avatar(rina.initials, size: 76, dot: C.accent),
+              Avatar(app.profile?.employee.initials ?? 'PK', size: 76, dot: C.accent),
               gap12,
-              Text(rina.name, style: T.h2),
-              Text('${rina.role} · ${rina.division}', style: T.caption),
+              Text(app.profile?.employee.fullName ?? '-', style: T.h2),
+              Text('${app.profile?.employee.jobTitle ?? '-'} · ${app.profile?.employee.division?.name ?? '-'}', style: T.caption),
               gap12,
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Pill(rina.id, icon: LucideIcons.idCard, tone: Tone.neutral),
+                Pill(app.profile?.employee.employeeNumber ?? '-', icon: LucideIcons.idCard, tone: Tone.neutral),
                 gap8,
                 const Pill('Terverifikasi', icon: LucideIcons.badgeCheck),
               ]),
@@ -311,7 +311,7 @@ class _PayState extends State<Pay> {
           final extra = p.gross - pokok - tunj;
           return Screen(
             inShell: true,
-            header: PageHeader('Gaji', subtitle: '${rina.name} · ${rina.division}', back: true, actions: [
+            header: PageHeader('Gaji', subtitle: '${app.profile?.employee.fullName ?? '-'} · ${app.profile?.employee.division?.name ?? '-'}', back: true, actions: [
               CircleBtn(LucideIcons.circleQuestionMark, tooltip: 'Cara perhitungan gaji', onTap: () => _howTo(context)),
             ]),
             children: [
@@ -471,9 +471,9 @@ class Slip extends StatelessWidget {
             ]),
             gap12,
             for (final (k, v) in [
-              ('Nama', rina.name),
-              ('ID karyawan', rina.id),
-              ('Jabatan', '${rina.role}, ${rina.division}'),
+              ('Nama', app.profile?.employee.fullName ?? '-'),
+              ('ID karyawan', app.profile?.employee.employeeNumber ?? '-'),
+              ('Jabatan', '${app.profile?.employee.jobTitle ?? '-'}, ${app.profile?.employee.division?.name ?? '-'}'),
               ('Periode', '1 sampai ${p.month.startsWith('September') ? 30 : 31} ${p.month.split(' ').first.substring(0, 3)} 2026'),
               ('Dibayar', paidDay),
             ])
@@ -502,7 +502,7 @@ class Slip extends StatelessWidget {
               ]),
             ),
             gap12,
-            Text('Ditransfer ke BCA •••• 4417 atas nama Rina Pratiwi', style: T.caption),
+            Text('Ditransfer ke BCA •••• 4417 atas nama ${app.profile?.employee.fullName ?? 'Karyawan'}', style: T.caption),
             gap16,
             Container(
               padding: const EdgeInsets.all(12),

@@ -240,7 +240,7 @@ class _Hero extends StatelessWidget {
           gap12,
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Selamat ${_greeting(now.hour)}, Rina', style: T.h3.copyWith(color: Colors.white)),
+              Text('Selamat ${_greeting(now.hour)}, ${app.profile?.employee.fullName?.split(' ').first ?? 'Karyawan'}', style: T.h3.copyWith(color: Colors.white)),
               Text(tanggal(now), style: T.caption.copyWith(color: C.mid)),
             ]),
           ),
