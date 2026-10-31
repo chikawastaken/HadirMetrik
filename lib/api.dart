@@ -59,6 +59,14 @@ class Api {
           .get(Uri.parse('$baseUrl$path'), headers: _headers)
           .timeout(const Duration(seconds: 15)));
 
+  static Future<Map<String, dynamic>> patch(String path, Map<String, dynamic> data) async =>
+      _handle(await client
+          .patch(Uri.parse('$baseUrl$path'), headers: _headers, body: jsonEncode(data))
+          .timeout(const Duration(seconds: 15)));
+
+  static Future<Map<String, dynamic>> getProfile() async => get('/me/profile');
+  static Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> data) async => patch('/me/profile', data);
+
   /// Reserves the invitation for the signed-in employee (architecture §4.8).
   static Future<Map<String, dynamic>> acceptInvitation(String token) => post('/invitations/$token/accept', {});
 
