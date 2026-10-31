@@ -67,6 +67,12 @@ class Api {
   static Future<Map<String, dynamic>> getProfile() async => get('/me/profile');
   static Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> data) async => patch('/me/profile', data);
 
+  static Future<Map<String, dynamic>> clockIn() async => post('/clock-in', {});
+  static Future<Map<String, dynamic>> clockOut() async => post('/clock-out', {});
+  static Future<Map<String, dynamic>> getSchedule() async => get('/schedule');
+  static Future<Map<String, dynamic>> getHistory() async => get('/history');
+  static Future<Map<String, dynamic>> correctHistory(int id) async => patch('/history/$id/correction', {});
+
   /// Reserves the invitation for the signed-in employee (architecture §4.8).
   static Future<Map<String, dynamic>> acceptInvitation(String token) => post('/invitations/$token/accept', {});
 
