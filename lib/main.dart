@@ -66,7 +66,7 @@ class _HadirMetrikState extends State<HadirMetrik> {
     final nav = navigatorKey.currentState;
     if (nav == null) return;
     if (Api.token == null) {
-      nav.pushAndRemoveUntil(fadeRoute(const Login()), (_) => false);
+      nav.pushAndRemoveUntil(fadeRoute(const InvitationSetPassword()), (_) => false);
     } else {
       nav.push(fadeRoute(const InvitationAccept()));
     }
@@ -92,9 +92,9 @@ class _HadirMetrikState extends State<HadirMetrik> {
             }),
           ),
         ),
-        // A cold-start invitation link goes straight to login; the token waits
-        // in DeepLink until a session exists.
-        home: DeepLink.hasPending ? const Login() : const Splash(),
+        // A cold-start invitation link goes straight to the password step: the
+        // link itself is the credential, so no login is needed first.
+        home: DeepLink.hasPending ? const InvitationSetPassword() : const Splash(),
       );
 }
 

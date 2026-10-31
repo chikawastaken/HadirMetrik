@@ -327,6 +327,121 @@ class _ChangePasswordState extends State<ChangePassword> {
       );
 }
 
+/// Chooses the permanent password straight from the invitation link, so HR
+/// never has to deliver the temporary one (architecture §4.8).
+class InvitationSetPassword extends StatefulWidget {
+  const InvitationSetPassword({super.key});
+  @override
+  State<InvitationSetPassword> createState() => _InvitationSetPasswordState();
+}
+
+class _InvitationSetPasswordState extends State<InvitationSetPassword> {
+  final next = TextEditingController(), confirm = TextEditingController();
+  bool tried = false, busy = false, hide = true;
+  String? error;
+  String? code;
+
+  @override
+  void dispose() {
+    next.dispose();
+    confirm.dispose();
+    super.dispose();
+  }
+
+  String? get nextErr => tried && next.text.length < 8 ? 'Kata sandi minimal 8 karakter' : null;
+  String? get confirmErr => tried && confirm.text != next.text ? 'Konfirmasi kata sandi tidak sama' : null;
+
+  Future<void> submit() async {
+    setState(() {
+      tried = true;
+      error = null;
+      code = null;
+    });
+    if (nextErr != null || confirmErr != null || busy) return;
+    final token = DeepLink.pendingToken;
+    if (token == null) {
+      setState(() => error = 'Link undangan tidak ditemukan. Buka kembali link dari email.');
+      return;
+    }
+    setState(() => busy = true);
+    try {
+      final data = await Api.setPasswordFromInvitation(token, next.text);
+      if (!mounted) return;
+      final role = (data['user'] as Map?)?['role'];
+      app.login(role == 'hr' || role == 'admin' ? Role.hr : Role.karyawan);
+      Navigator.of(context).pushReplacement(fadeRoute(const InvitationAccept()));
+    } on ApiError catch (e) {
+      if (!mounted) return;
+      setState(() {
+        busy = false;
+        error = e.message;
+        code = e.code;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        busy = false;
+        error = 'Tidak bisa terhubung ke server. Periksa koneksi lalu coba lagi.';
+      });
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => _AuthFrame(
+        title: 'Buat Kata Sandi',
+        subtitle: 'Tentukan kata sandi untuk masuk ke akunmu',
+        children: [
+          Field(
+            label: 'Kata sandi baru',
+            hint: 'Minimal 8 karakter',
+            icon: LucideIcons.lock,
+            controller: next,
+            obscure: hide,
+            error: nextErr,
+            onChanged: (_) => tried ? setState(() {}) : null,
+            suffix: IconButton(
+              tooltip: hide ? 'Tampilkan kata sandi' : 'Sembunyikan kata sandi',
+              icon: Icon(hide ? LucideIcons.eye : LucideIcons.eyeOff, size: 20, color: C.text3),
+              onPressed: () => setState(() => hide = !hide),
+            ),
+          ),
+          gap16,
+          Field(
+            label: 'Ulangi kata sandi baru',
+            hint: 'Ketik ulang kata sandi baru',
+            icon: LucideIcons.lock,
+            controller: confirm,
+            obscure: hide,
+            error: confirmErr,
+            onChanged: (_) => tried ? setState(() {}) : null,
+          ),
+          if (error != null) ...[
+            gap16,
+            Row(children: [
+              const Icon(LucideIcons.triangleAlert, size: 18, color: C.danger),
+              gap8,
+              Expanded(child: Text(error!, style: T.small.copyWith(color: C.danger))),
+            ]),
+          ],
+          gap24,
+          Btn('Buat Kata Sandi', busy: busy, onTap: submit),
+          if (code == 'INVITATION_PASSWORD_ALREADY_CHANGED') ...[
+            gap12,
+            Btn('Masuk dengan akun karyawan', icon: LucideIcons.logIn, kind: BtnKind.soft, onTap: () => resetTo(context, const Login())),
+          ],
+          const Spacer(),
+          gap16,
+          Row(children: [
+            const Icon(LucideIcons.info, size: 16, color: C.text3),
+            gap8,
+            Expanded(child: Text('Kata sandi ini menggantikan kata sandi sementara dari HR.', style: T.caption)),
+          ]),
+        ],
+      );
+}
+
 /// Opens the invitation from the email link once a session exists.
 class InvitationAccept extends StatefulWidget {
   const InvitationAccept({super.key});

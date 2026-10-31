@@ -62,6 +62,17 @@ class Api {
   /// Reserves the invitation for the signed-in employee (architecture §4.8).
   static Future<Map<String, dynamic>> acceptInvitation(String token) => post('/invitations/$token/accept', {});
 
+  /// Chooses the permanent password straight from the invitation link and
+  /// receives a session in return (architecture §4.8).
+  static Future<Map<String, dynamic>> setPasswordFromInvitation(String invitation, String next) async {
+    final data = await post('/invitations/$invitation/password', {
+      'new_password': next,
+      'new_password_confirmation': next,
+    });
+    token = data['token'] as String?;
+    return data;
+  }
+
   static Future<Map<String, dynamic>> changePassword({required String current, required String next}) =>
       post('/auth/change-password', {
         'current_password': current,
