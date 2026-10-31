@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../api.dart';
@@ -358,9 +359,9 @@ class _AddEmployeeState extends State<AddEmployee> {
                         ('Lokasi', _label(_locations, loc)),
                         ('Mulai', tanggal(start)),
                         ('Total gaji', rp(_n(base) + _n(transport) + _n(meal))),
-                        ('Kata sandi sementara', password),
                       ])
                         InfoRow(l, v),
+                      _PasswordRow(password),
                     ]),
                   ),
                 ),
@@ -1060,4 +1061,34 @@ class _IncidentDetailState extends State<IncidentDetail> {
       ],
     );
   }
+}
+
+/// Temporary password row: selectable and copyable so HR can pass it on.
+class _PasswordRow extends StatelessWidget {
+  const _PasswordRow(this.value);
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Kata sandi sementara', style: T.body),
+              Text('Ketuk atau salin untuk dikirim ke karyawan', style: T.small),
+            ]),
+          ),
+          gap8,
+          Flexible(child: SelectableText(value, textAlign: TextAlign.right, style: T.numS.copyWith(color: C.text))),
+          IconButton(
+            tooltip: 'Salin kata sandi',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(LucideIcons.copy, size: 18),
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: value));
+              if (context.mounted) toast(context, 'Kata sandi disalin', icon: LucideIcons.check);
+            },
+          ),
+        ]),
+      );
 }

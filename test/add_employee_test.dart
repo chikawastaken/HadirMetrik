@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hadirmetrik/api.dart';
 import 'package:hadirmetrik/screens/hr_people.dart';
@@ -16,6 +17,13 @@ void main() {
   testWidgets('add employee sends the form to the HR API and shows the temporary password', (tester) async {
     Api.token = 'hr-session';
     Map<String, dynamic>? sent;
+    String? copied;
+
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') copied = (call.arguments as Map)['text'] as String?;
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
 
     Api.client = MockClient((request) async {
       if (request.method == 'GET' && request.url.path.endsWith('/hr/employees/create-options')) {
@@ -64,6 +72,10 @@ void main() {
       return http.Response(jsonEncode({'success': false, 'message': 'unexpected'}), 500);
     });
 
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
     await tester.pumpWidget(const MaterialApp(home: AddEmployee()));
     await tester.pumpAndSettle();
 
@@ -98,6 +110,11 @@ void main() {
       'transport_allowance': 575000,
       'meal_allowance': 690000,
     });
+    expect(sent!['employment_start'], '2026-10-19');
     expect(find.text('Abc12345Xyz67890'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Salin kata sandi'));
+    await tester.pump();
+    expect(copied, 'Abc12345Xyz67890');
   });
 }
