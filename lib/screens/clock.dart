@@ -1,11 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons_flutter.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../main.dart';
 import '../state.dart';
 import '../theme.dart';
-import '../visuals.dart';
 import '../widgets.dart';
+
+void startClock(BuildContext context) {
+  if (app.onLeave) {
+    return toast(context, 'Hari ini kamu cuti. Absen tidak diperlukan.',
+        icon: LucideIcons.plane, aboveNav: true);
+  }
+  if (app.dayDone) {
+    return toast(context, 'Absen hari ini sudah lengkap.', aboveNav: true);
+  }
+  Navigator.of(context, rootNavigator: true)
+      .push(MaterialPageRoute(builder: (_) => const ClockScreen()));
+}
 
 class ClockScreen extends StatelessWidget {
   const ClockScreen({super.key});
