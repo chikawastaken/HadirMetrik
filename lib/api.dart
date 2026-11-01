@@ -36,7 +36,7 @@ class Api {
         if (token != null) 'Authorization': 'Bearer $token',
       };
 
-  static Map<String, dynamic> _handle(http.Response r) {
+  static dynamic _decode(http.Response r) {
     Map<String, dynamic> body;
     try {
       body = jsonDecode(r.body) as Map<String, dynamic>;
@@ -44,9 +44,20 @@ class Api {
       throw ApiError('Respons server tidak valid (${r.statusCode})');
     }
     if (r.statusCode >= 200 && r.statusCode < 300 && body['success'] == true) {
-      return (body['data'] as Map<String, dynamic>?) ?? {};
+      return body['data'];
     }
     throw ApiError(body['message'] ?? 'Terjadi kesalahan', body['errors']);
+  }
+
+  static Map<String, dynamic> _handle(http.Response r) {
+    final data = _decode(r);
+    return data is Map<String, dynamic> ? data : {};
+  }
+
+  /// Some endpoints return a bare list in `data` (e.g. face templates).
+  static List<dynamic> _handleList(http.Response r) {
+    final data = _decode(r);
+    return data is List ? data : const [];
   }
 
   static Future<Map<String, dynamic>> post(String path, Map<String, dynamic> data) async =>
@@ -62,6 +73,11 @@ class Api {
   static Future<Map<String, dynamic>> patch(String path, Map<String, dynamic> data) async =>
       _handle(await client
           .patch(Uri.parse('$baseUrl$path'), headers: _headers, body: jsonEncode(data))
+          .timeout(const Duration(seconds: 15)));
+
+  static Future<Map<String, dynamic>> delete(String path) async =>
+      _handle(await client
+          .delete(Uri.parse('$baseUrl$path'), headers: _headers)
           .timeout(const Duration(seconds: 15)));
 
   static Future<Map<String, dynamic>> getProfile() async => get('/me/profile');
@@ -114,4 +130,45 @@ class Api {
 
   static Future<Map<String, dynamic>> createEmployee(Map<String, dynamic> body) =>
       post('/hr/employees', body);
+
+  // ------------------------------------------------------------ Phase 4
+
+  /// Submits an enrollment attempt. The backend keeps it `pending` until a
+  /// face model/provider is wired in, so this never means "verified".
+  static Future<Map<String, dynamic>> submitFaceEnrollment({
+    int sampleCount = 5,
+    String? provider,
+    String? templateRef,
+    Map<String, dynamic>? metadata,
+  }) =>
+      post('/face/enroll', {
+        'sample_count': sampleCount,
+        if (provider != null) 'provider': provider,
+        if (templateRef != null) 'template_ref': templateRef,
+        if (metadata != null) 'metadata': metadata,
+      });
+
+  static Future<Map<String, dynamic>> getFaceEnrollment(int id) => get('/face/enrollments/$id');
+
+  static Future<List<dynamic>> getFaceTemplates() async =>
+      _handleList(await client
+          .get(Uri.parse('$baseUrl/face/templates'), headers: _headers)
+          .timeout(const Duration(seconds: 15)));
+
+  static Future<Map<String, dynamic>> revokeFaceTemplate(int id) => post('/face/templates/$id/revoke', {});
+
+  static Future<Map<String, dynamic>> deleteFaceTemplate(int id) => delete('/face/templates/$id');
+
+  static Future<Map<String, dynamic>> syncAttendance({
+    required String idempotencyKey,
+    String? deviceId,
+    required List<Map<String, dynamic>> events,
+  }) =>
+      post('/sync/attendance', {
+        'idempotency_key': idempotencyKey,
+        if (deviceId != null) 'device_id': deviceId,
+        'events': events,
+      });
+
+  static Future<Map<String, dynamic>> getSyncBatch(int id) => get('/sync/attendance/$id');
 }
