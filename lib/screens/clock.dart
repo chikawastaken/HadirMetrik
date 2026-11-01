@@ -21,25 +21,63 @@ class ClockScreen extends StatelessWidget {
   const ClockScreen({super.key});
 
   @override
-  Widget build(BuildContext context) => Screen(
-        inShell: true,
-        header: const PageHeader('Absen Hari Ini'),
-        children: [
-          AppCard(
-            child: Column(children: [
-              const Icon(LucideIcons.clock, size: 48, color: Colors.black),
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: app,
+        builder: (context, _) => Screen(
+          inShell: true,
+          header: const PageHeader('Absen Hari Ini'),
+          children: [
+            AppCard(
+              child: Column(children: [
+                const Icon(LucideIcons.clock, size: 48, color: Colors.black),
+                gap12,
+                Text(app.clockIn == null ? 'Belum masuk' : 'Masuk ${app.now.hour}:${app.now.minute.toString().padLeft(2, '0')}', style: T.h2),
+              ]),
+            ),
+            if (app.clockNotice != null) ...[
               gap12,
-              Text(app.clockIn == null ? 'Belum masuk' : 'Masuk ${app.now.hour}:${app.now.minute.toString().padLeft(2, '0')}', style: T.h2),
-            ]),
-          ),
-          gap16,
-          Btn(
-            app.clockIn == null ? 'Masuk Sekarang' : 'Keluar Sekarang',
-            icon: app.clockIn == null ? LucideIcons.logIn : LucideIcons.logOut,
-            onTap: () => app.recordClock(),
-          ),
-          gap12,
-          Text('Status: ${app.clockIn == null ? 'Belum masuk' : app.clockOut == null ? 'Masuk (belum keluar)' : 'Selesai'}', style: T.caption),
-        ],
+              Banner2(
+                app.pendingSyncCount > 0 ? 'Presensi menunggu sinkron' : 'Presensi belum tercatat',
+                body: app.clockNotice,
+                tone: app.pendingSyncCount > 0 ? Tone.warning : Tone.danger,
+                icon: app.pendingSyncCount > 0 ? LucideIcons.cloudOff : LucideIcons.triangleAlert,
+              ),
+            ],
+            gap16,
+            Btn(
+              app.clockIn == null ? 'Masuk Sekarang' : 'Keluar Sekarang',
+              icon: app.clockIn == null ? LucideIcons.logIn : LucideIcons.logOut,
+              busy: app.clockBusy,
+              onTap: app.clockBusy ? null : () => app.recordClock(),
+            ),
+            gap12,
+            Text('Status: ${app.clockIn == null ? 'Belum masuk' : app.clockOut == null ? 'Masuk (belum keluar)' : 'Selesai'}', style: T.caption),
+            if (app.pendingSyncCount > 0) ...[
+              gap12,
+              AppCard(
+                color: C.warningSubtle,
+                border: C.warning.withValues(alpha: .2),
+                child: Row(children: [
+                  const IconTile(LucideIcons.cloudUpload, tone: Tone.warning),
+                  gap12,
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('${app.pendingSyncCount} presensi di perangkat', style: T.title),
+                      Text('Dikirim otomatis saat koneksi tersedia.', style: T.caption),
+                    ]),
+                  ),
+                  Btn(
+                    'Sinkronkan',
+                    expand: false,
+                    height: 40,
+                    kind: BtnKind.soft,
+                    busy: app.syncing,
+                    onTap: app.syncing ? null : () => app.flushOutbox(),
+                  ),
+                ]),
+              ),
+            ],
+          ],
+        ),
       );
 }
