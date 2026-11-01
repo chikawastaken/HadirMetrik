@@ -789,7 +789,11 @@ class _FaceCaptureState extends State<FaceCapture> {
     });
     if (done == 5) {
       timer?.cancel();
-      Future.delayed(const Duration(milliseconds: 500), () {
+      Future.delayed(const Duration(milliseconds: 500), () async {
+        if (!mounted) return;
+        // Submit the capture session. Without a model the backend keeps it
+        // pending; an offline failure is shown on the result screen.
+        await app.submitFaceEnrollment(sampleCount: 5);
         if (mounted) Navigator.of(context).pushReplacement(fadeRoute(FaceSuccess(first: widget.first)));
       });
     }
@@ -861,45 +865,77 @@ class _FaceCaptureState extends State<FaceCapture> {
 class FaceSuccess extends StatelessWidget {
   const FaceSuccess({super.key, this.first = false});
   final bool first;
+
   @override
-  Widget build(BuildContext context) => Screen(
-        header: const SizedBox(height: 24),
-        bottom: BottomActions([
-          Btn(first ? 'Lanjut ke Beranda' : 'Selesai', onTap: () {
-            app.faceEnrolled = true;
-            first ? enterApp(context) : Navigator.pop(context);
-          }),
-        ]),
-        children: [
-          gap24,
-          Center(
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: .6, end: 1),
-              duration: const Duration(milliseconds: 600),
-              curve: Curves.elasticOut,
-              builder: (_, s, child) => Transform.scale(scale: s, child: child),
-              child: Container(
-                width: 132,
-                height: 132,
-                decoration: BoxDecoration(color: C.mid.withValues(alpha: .6), shape: BoxShape.circle),
-                alignment: Alignment.center,
-                child: Container(width: 96, height: 96, decoration: const BoxDecoration(color: C.primary, shape: BoxShape.circle), child: const Icon(LucideIcons.scanFace, size: 44, color: Colors.white)),
-              ),
+  Widget build(BuildContext context) {
+    final enrollment = app.faceEnrollment;
+    final pending = enrollment == null || enrollment.isPending || enrollment.isProcessing;
+    final statusLabel = switch (enrollment?.status) {
+      'pending' => 'Menunggu verifikasi',
+      'processing' => 'Sedang diproses',
+      'completed' => 'Terverifikasi',
+      'rejected' => 'Ditolak',
+      'failed' => 'Gagal',
+      _ => 'Belum terkirim',
+    };
+
+    return Screen(
+      header: const SizedBox(height: 24),
+      bottom: BottomActions([
+        Btn(first ? 'Lanjut ke Beranda' : 'Selesai', onTap: () {
+          app.faceEnrolled = true;
+          first ? enterApp(context) : Navigator.pop(context);
+        }),
+      ]),
+      children: [
+        gap24,
+        Center(
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: .6, end: 1),
+            duration: const Duration(milliseconds: 600),
+            curve: Curves.elasticOut,
+            builder: (_, s, child) => Transform.scale(scale: s, child: child),
+            child: Container(
+              width: 132,
+              height: 132,
+              decoration: BoxDecoration(color: C.mid.withValues(alpha: .6), shape: BoxShape.circle),
+              alignment: Alignment.center,
+              child: Container(width: 96, height: 96, decoration: const BoxDecoration(color: C.primary, shape: BoxShape.circle), child: const Icon(LucideIcons.scanFace, size: 44, color: Colors.white)),
             ),
           ),
-          gap24,
-          Text('Wajah berhasil didaftarkan', style: T.h1, textAlign: TextAlign.center),
+        ),
+        gap24,
+        Text(
+          enrollment == null ? 'Wajah terekam di perangkat' : 'Pendaftaran wajah dikirim',
+          style: T.h1,
+          textAlign: TextAlign.center,
+        ),
+        gap12,
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Pill(statusLabel, icon: pending ? LucideIcons.hourglass : LucideIcons.check, tone: pending ? Tone.warning : Tone.success),
+          gap8,
+          Text(pending ? 'Menunggu model wajah' : 'Siap dipakai untuk absen', style: T.caption),
+        ]),
+        gap24,
+        AppCard(
+          child: Divided([
+            const InfoRow('Sudut terekam', '5 dari 5', icon: LucideIcons.scanFace),
+            InfoRow('Status verifikasi', statusLabel, icon: LucideIcons.shieldCheck),
+            InfoRow('Permintaan', enrollment == null ? 'Belum tersinkron' : '#${enrollment.id}', icon: LucideIcons.history),
+            InfoRow('Waktu', '${tglPendek(app.now)}, ${hm(app.now)}', icon: LucideIcons.clock),
+            const InfoRow('Penyimpanan', 'Referensi buram', icon: LucideIcons.lock),
+          ]),
+        ),
+        if (pending) ...[
           gap12,
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Pill('Selesai', icon: LucideIcons.check), gap8, Text('Siap dipakai untuk absen', style: T.caption)]),
-          gap24,
-          AppCard(
-            child: Divided([
-              const InfoRow('Sudut terekam', '5 dari 5', icon: LucideIcons.scanFace),
-              const InfoRow('Skor kualitas [DL]', '96 / 100', icon: LucideIcons.sparkles),
-              InfoRow('Waktu', '${tglPendek(app.now)}, ${hm(app.now)}', icon: LucideIcons.clock),
-              const InfoRow('Penyimpanan', 'Terenkripsi', icon: LucideIcons.lock),
-            ]),
+          const Banner2(
+            'Verifikasi wajah belum aktif',
+            body: 'Model wajah belum tersedia, jadi template tetap menunggu verifikasi. Absen tetap memakai alur yang berlaku.',
+            tone: Tone.info,
+            icon: LucideIcons.info,
           ),
         ],
-      );
+      ],
+    );
+  }
 }

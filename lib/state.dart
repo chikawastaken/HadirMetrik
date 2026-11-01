@@ -51,6 +51,7 @@ class AppState extends ChangeNotifier {
   String? syncError;
   int pendingSyncCount = 0;
   String? clockNotice;
+  bool clockBusy = false;
 
   FaceTemplate? get latestFaceTemplate => faceTemplates.isEmpty ? null : faceTemplates.first;
 
@@ -274,6 +275,7 @@ class AppState extends ChangeNotifier {
     lastSync = null;
     syncError = null;
     clockNotice = null;
+    clockBusy = false;
     notifyListeners();
   }
 
@@ -283,6 +285,18 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> recordClock() async {
+    if (clockBusy) return;
+    clockBusy = true;
+    notifyListeners();
+    try {
+      await _recordClock();
+    } finally {
+      clockBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _recordClock() async {
     final t = now;
     final type = clockIn == null ? OutboxEvent.typeClockIn : OutboxEvent.typeClockOut;
     clockNotice = null;

@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../visuals.dart';
 import '../widgets.dart';
 import 'auth.dart';
+import 'face.dart';
 import 'leave.dart';
 import 'tasks.dart';
 
@@ -131,18 +132,9 @@ class Profile extends StatelessWidget {
             ],
           ]),
           const Overline('DATA WAJAH'),
-          AppCard(
-            child: Column(children: [
-              Row(children: [
-                const IconTile(LucideIcons.scanFace, tone: Tone.success, size: 48),
-                gap12,
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Terdaftar · 5 sudut', style: T.title), Text('Skor kualitas 96 [DL] · Terenkripsi', style: T.caption)])),
-                const Pill('Aktif', icon: LucideIcons.circleCheck),
-              ]),
-              gap16,
-              Btn('Daftarkan Ulang Wajah', kind: BtnKind.soft, icon: LucideIcons.refreshCw, height: 48, onTap: () => push(context, const FaceTips(), root: true)),
-            ]),
-          ),
+          const FaceDataCard(),
+          const Overline('SINKRONISASI OFFLINE'),
+          const SyncCard(),
           const Overline('PERANGKAT & KERJA'),
           AppCard(
             child: Divided([
