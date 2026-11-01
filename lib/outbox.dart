@@ -180,6 +180,14 @@ class Outbox {
     await _persist();
   }
 
+  /// Drops every queued event. Used on logout so one account never syncs
+  /// another account's attendance.
+  Future<void> clear() async {
+    _events.clear();
+    _batchKey = null;
+    await _persist();
+  }
+
   Future<void> _persist() => _store.write(jsonEncode({
         'batch_key': _batchKey,
         'events': [for (final event in _events) event.toJson()],
