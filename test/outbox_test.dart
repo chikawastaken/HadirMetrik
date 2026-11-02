@@ -33,14 +33,54 @@ void main() {
     await outbox.load();
     await outbox.add(type: OutboxEvent.typeClockIn, occurredAt: DateTime.utc(2026, 11, 1, 1));
 
-    final key = outbox.batchKey;
+    final key = await outbox.ensureBatchKey();
 
     final retry = Outbox(store: store);
     await retry.load();
-    expect(retry.batchKey, key);
+    expect(await retry.ensureBatchKey(), key);
 
     await retry.clearBatchKey();
-    expect(retry.batchKey, isNot(key));
+    expect(await retry.ensureBatchKey(), isNot(key));
+  });
+
+  test('the batch key is persisted before the request is sent', () async {
+    final store = MemoryOutboxStore();
+    final outbox = Outbox(store: store);
+    await outbox.load();
+    await outbox.add(type: OutboxEvent.typeClockIn, occurredAt: DateTime.utc(2026, 11, 1, 1));
+
+    await outbox.ensureBatchKey();
+
+    // Read the store directly, without letting another load() hide a missing write.
+    expect(store.value, contains('batch_key'));
+  });
+
+  test('switching account clears another account\'s queued attendance', () async {
+    final store = MemoryOutboxStore();
+    final outbox = Outbox(store: store);
+    await outbox.setOwner('employee-a');
+    await outbox.add(type: OutboxEvent.typeClockIn, occurredAt: DateTime.utc(2026, 11, 1, 1));
+
+    await outbox.setOwner('employee-a');
+    expect(outbox.length, 1);
+
+    await outbox.setOwner('employee-b');
+    expect(outbox.isEmpty, isTrue);
+
+    final reloaded = Outbox(store: store);
+    await reloaded.load();
+    expect(reloaded.isEmpty, isTrue);
+    expect(reloaded.owner, 'employee-b');
+  });
+
+  test('API payload sends an explicit UTC offset', () async {
+    final event = OutboxEvent(
+      clientEventId: 'evt-1',
+      type: OutboxEvent.typeClockIn,
+      occurredAt: DateTime(2026, 11, 1, 8),
+    );
+
+    expect(event.toApiJson()['occurred_at'], endsWith('Z'));
   });
 
   test('settled events are removed while failed ones stay queued', () async {

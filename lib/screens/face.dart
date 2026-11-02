@@ -96,23 +96,28 @@ class _SyncCardState extends State<SyncCard> {
         builder: (context, _) {
           final pending = app.pendingSyncCount;
           final last = app.lastSync;
+          final rejected = app.lastRejected.length;
+          final review = app.lastReview.length;
           final title = app.syncing
               ? 'Menyinkronkan presensi...'
-              : pending == 0
-                  ? 'Semua presensi tersinkron'
-                  : '$pending presensi menunggu';
+              : rejected > 0
+                  ? '$rejected presensi ditolak'
+                  : pending == 0
+                      ? (review > 0 ? '$review presensi menunggu review' : 'Semua presensi tersinkron')
+                      : '$pending presensi menunggu';
           final caption = app.syncError != null
               ? app.syncError!
               : last == null
-                  ? 'Presensi offline dikirim otomatis saat online.'
+                  ? 'Dikirim saat aplikasi dibuka atau lewat tombol di bawah.'
                   : 'Batch #${last.id} · ${last.processedEvents}/${last.totalEvents} diproses';
+          final bad = app.syncError != null || rejected > 0;
 
           return AppCard(
             child: Column(children: [
               Row(children: [
                 IconTile(
-                  pending == 0 ? LucideIcons.cloudCheck : LucideIcons.cloudUpload,
-                  tone: app.syncError != null ? Tone.danger : pending == 0 ? Tone.success : Tone.warning,
+                  bad ? LucideIcons.cloudOff : pending == 0 ? LucideIcons.cloudCheck : LucideIcons.cloudUpload,
+                  tone: bad ? Tone.danger : pending == 0 ? Tone.success : Tone.warning,
                   size: 48,
                 ),
                 gap12,
@@ -234,7 +239,7 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen> {
                     Pill(current.label, icon: active ? LucideIcons.circleCheck : pending ? LucideIcons.hourglass : LucideIcons.circleDashed, tone: tone),
                   if (enrollment != null) ...[
                     gap12,
-                    InfoRow('Permintaan terakhir', '#${enrollment.id} · ${enrollment.status}', icon: LucideIcons.history),
+                    InfoRow('Permintaan terakhir', '#${enrollment.id} · ${enrollment.label}', icon: LucideIcons.history),
                     if (enrollment.sampleCount > 0)
                       InfoRow('Sampel terekam', '${enrollment.sampleCount} sudut', icon: LucideIcons.camera),
                   ],

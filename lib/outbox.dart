@@ -37,12 +37,15 @@ class OutboxEvent {
       };
 
   /// Shape expected by `POST /sync/attendance`.
+  ///
+  /// Always send an explicit UTC offset; a naive local timestamp can be read
+  /// as UTC by the server and shift the attendance to another day.
   Map<String, dynamic> toApiJson() => {
         'client_event_id': clientEventId,
         'type': type,
-        'occurred_at': occurredAt.toIso8601String(),
-        if (latitude != null) 'latitude': latitude,
-        if (longitude != null) 'longitude': longitude,
+        'occurred_at': occurredAt.toUtc().toIso8601String(),
+        'latitude': ?latitude,
+        'longitude': ?longitude,
       };
 
   factory OutboxEvent.fromJson(Map<String, dynamic> json) => OutboxEvent(
@@ -98,13 +101,18 @@ class Outbox {
   final List<OutboxEvent> _events = [];
   final Random _random = Random.secure();
   String? _batchKey;
+  String? _owner;
   bool _loaded = false;
+  Future<void>? _loading;
 
   List<OutboxEvent> get events => List.unmodifiable(_events);
 
   int get length => _events.length;
 
   bool get isEmpty => _events.isEmpty;
+
+  /// Account that owns the queued events; null until the first login.
+  String? get owner => _owner;
 
   String get batchKey {
     if (_batchKey != null) return _batchKey!;
@@ -115,25 +123,62 @@ class Outbox {
     return _batchKey!;
   }
 
-  Future<void> load() async {
-    if (_loaded) return;
-    _loaded = true;
+  /// Awaits persistence before the key is used for a request, so a crash
+  /// cannot lose it and make the retry look like a new batch.
+  Future<String> ensureBatchKey() async {
+    await load();
+    if (_batchKey == null) {
+      _batchKey = _newBatchKey();
+      await _persist();
+    }
+    return _batchKey!;
+  }
 
-    final raw = await _store.read();
-    if (raw == null || raw.isEmpty) return;
+  Future<void> load() {
+    if (_loaded) return Future.value();
+    return _loading ??= _load();
+  }
 
+  Future<void> _load() async {
     try {
+      final raw = await _store.read();
+      if (raw == null || raw.isEmpty) {
+        _loaded = true;
+        return;
+      }
+
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      _owner = decoded['owner'] as String?;
       _batchKey = decoded['batch_key'] as String?;
       for (final item in (decoded['events'] as List? ?? const [])) {
-        _events.add(OutboxEvent.fromJson(item as Map<String, dynamic>));
+        try {
+          _events.add(OutboxEvent.fromJson(item as Map<String, dynamic>));
+        } catch (_) {
+          // Skip one malformed event instead of discarding the whole queue.
+        }
       }
       _sort();
+      _loaded = true;
     } catch (_) {
       // Corrupt payload: start clean instead of blocking every future sync.
       _events.clear();
       _batchKey = null;
+      _loaded = true;
+    } finally {
+      _loading = null;
     }
+  }
+
+  /// Binds the queue to an account. A different account never inherits
+  /// another employee's unsynced attendance.
+  Future<void> setOwner(String? owner) async {
+    await load();
+    final normalized = owner?.trim().toLowerCase();
+    if (_owner == normalized) return;
+    _owner = normalized;
+    _events.clear();
+    _batchKey = null;
+    await _persist();
   }
 
   Future<OutboxEvent> add({
@@ -189,6 +234,7 @@ class Outbox {
   }
 
   Future<void> _persist() => _store.write(jsonEncode({
+        'owner': _owner,
         'batch_key': _batchKey,
         'events': [for (final event in _events) event.toJson()],
       }));

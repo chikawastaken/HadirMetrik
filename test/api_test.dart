@@ -109,7 +109,7 @@ void main() {
     expect(batch['status'], 'completed');
   });
 
-  test('server error envelope becomes ApiError', () async {
+  test('server error envelope becomes ApiError with its status', () async {
     Api.client = MockClient((request) async => _json({
           'success': false,
           'message': 'Template wajah tidak ditemukan.',
@@ -117,7 +117,49 @@ void main() {
 
     expect(
       () => Api.revokeFaceTemplate(99),
-      throwsA(isA<ApiError>().having((e) => e.message, 'message', contains('tidak ditemukan'))),
+      throwsA(isA<ApiError>()
+          .having((e) => e.message, 'message', contains('tidak ditemukan'))
+          .having((e) => e.statusCode, 'statusCode', 404)
+          .having((e) => e.isServerError, 'isServerError', isFalse)),
     );
+  });
+
+  test('5xx responses are marked retryable', () async {
+    Api.client = MockClient((request) async => _json({
+          'success': false,
+          'message': 'Gateway timeout',
+        }, 504));
+
+    expect(
+      () => Api.clockIn(),
+      throwsA(isA<ApiError>()
+          .having((e) => e.statusCode, 'statusCode', 504)
+          .having((e) => e.isServerError, 'isServerError', isTrue)),
+    );
+  });
+
+  test('login remembers the account key used to scope the outbox', () async {
+    Api.client = MockClient((request) async => _json({
+          'success': true,
+          'data': {'token': 't', 'user': {'role': 'employee'}},
+        }));
+
+    await Api.login('  Karyawan@Example.com ', 'secret');
+
+    expect(Api.accountKey, 'karyawan@example.com');
+  });
+
+  test('login prefers the user id so the queue survives a different identifier', () async {
+    Api.client = MockClient((request) async => _json({
+          'success': true,
+          'data': {
+            'token': 't',
+            'user': {'id': 42, 'email': 'karyawan@example.com', 'role': 'employee'},
+          },
+        }));
+
+    await Api.login('12345678', 'secret');
+
+    expect(Api.accountKey, 'u:42');
   });
 }

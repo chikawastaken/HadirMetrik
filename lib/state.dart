@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'api.dart';
 
@@ -45,13 +47,17 @@ class AppState extends ChangeNotifier {
   List<FaceTemplate> faceTemplates = [];
   FaceEnrollment? faceEnrollment;
   bool faceBusy = false;
+  bool faceEnrollmentFailed = false;
   String? faceError;
   bool syncing = false;
   SyncBatch? lastSync;
+  List<SyncEventResult> lastRejected = [];
+  List<SyncEventResult> lastReview = [];
   String? syncError;
   int pendingSyncCount = 0;
   String? clockNotice;
   bool clockBusy = false;
+  int _session = 0;
 
   FaceTemplate? get latestFaceTemplate => faceTemplates.isEmpty ? null : faceTemplates.first;
 
@@ -109,20 +115,25 @@ class AppState extends ChangeNotifier {
   /// Loads template versions from the API. Failures stay non-fatal so the
   /// profile still renders while the device is offline.
   Future<void> loadFaceState() async {
+    final session = _session;
     faceBusy = true;
     faceError = null;
     notifyListeners();
     try {
       final rows = await Api.getFaceTemplates();
+      if (session != _session) return;
       faceTemplates = [
         for (final row in rows) FaceTemplate.fromJson(row as Map<String, dynamic>),
-      ];
-      faceEnrolled = faceTemplates.any((template) => template.isActive || template.isPending);
+      ]..sort((a, b) => b.version.compareTo(a.version));
+      faceEnrolled = faceTemplates.any((template) => template.isActive);
     } catch (error) {
+      if (session != _session) return;
       faceError = error is ApiError ? error.message : 'Tidak bisa memuat data wajah.';
     } finally {
-      faceBusy = false;
-      notifyListeners();
+      if (session == _session) {
+        faceBusy = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -134,7 +145,9 @@ class AppState extends ChangeNotifier {
     String? provider,
     String? templateRef,
   }) async {
+    final session = _session;
     faceBusy = true;
+    faceEnrollmentFailed = false;
     faceError = null;
     notifyListeners();
     try {
@@ -143,54 +156,72 @@ class AppState extends ChangeNotifier {
         provider: provider,
         templateRef: templateRef,
       ));
+      if (session != _session) return null;
       faceEnrollment = result.enrollment;
       faceTemplates = [
         result.template,
         ...faceTemplates.where((template) => template.id != result.template.id),
-      ];
-      faceEnrolled = true;
+      ]..sort((a, b) => b.version.compareTo(a.version));
+      faceEnrolled = result.template.isActive;
       return result;
     } catch (error) {
+      if (session != _session) return null;
+      faceEnrollmentFailed = true;
       faceError = error is ApiError
           ? error.message
           : 'Pendaftaran belum terkirim. Coba lagi saat koneksi tersedia.';
       return null;
     } finally {
-      faceBusy = false;
-      notifyListeners();
+      if (session == _session) {
+        faceBusy = false;
+        notifyListeners();
+      }
     }
   }
 
   Future<bool> revokeFaceTemplate(int id) async {
+    final session = _session;
     faceBusy = true;
     faceError = null;
     notifyListeners();
     try {
-      _replaceTemplate(FaceTemplate.fromJson(await Api.revokeFaceTemplate(id)));
+      final template = FaceTemplate.fromJson(await Api.revokeFaceTemplate(id));
+      if (session != _session) return false;
+      _replaceTemplate(template);
+      faceEnrolled = faceTemplates.any((existing) => existing.isActive);
       return true;
     } catch (error) {
+      if (session != _session) return false;
       faceError = error is ApiError ? error.message : 'Tidak bisa mencabut template wajah.';
       return false;
     } finally {
-      faceBusy = false;
-      notifyListeners();
+      if (session == _session) {
+        faceBusy = false;
+        notifyListeners();
+      }
     }
   }
 
   Future<bool> deleteFaceTemplate(int id) async {
+    final session = _session;
     faceBusy = true;
     faceError = null;
     notifyListeners();
     try {
-      _replaceTemplate(FaceTemplate.fromJson(await Api.deleteFaceTemplate(id)));
-      faceEnrolled = faceTemplates.any((template) => template.isActive || template.isPending);
+      final template = FaceTemplate.fromJson(await Api.deleteFaceTemplate(id));
+      if (session != _session) return false;
+      _replaceTemplate(template);
+      faceEnrolled = faceTemplates.any((existing) => existing.isActive);
       return true;
     } catch (error) {
+      if (session != _session) return false;
       faceError = error is ApiError ? error.message : 'Tidak bisa menghapus template wajah.';
       return false;
     } finally {
-      faceBusy = false;
-      notifyListeners();
+      if (session == _session) {
+        faceBusy = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -206,29 +237,49 @@ class AppState extends ChangeNotifier {
   Future<SyncBatch?> flushOutbox() async {
     if (syncing) return lastSync;
 
-    await outbox.load();
-    pendingSyncCount = outbox.length;
-    if (outbox.isEmpty) {
-      notifyListeners();
-      return lastSync;
-    }
-
+    final session = _session;
     syncing = true;
     syncError = null;
     notifyListeners();
 
-    final batchEvents = outbox.events.take(100).toList();
+    List<OutboxEvent> batchEvents = const [];
 
     try {
-      final batch = SyncBatch.fromJson(await Api.syncAttendance(
-        idempotencyKey: outbox.batchKey,
+      await outbox.load();
+      if (session != _session) return null;
+      pendingSyncCount = outbox.length;
+      if (outbox.isEmpty) return lastSync;
+
+      batchEvents = outbox.events.take(100).toList();
+      final key = await outbox.ensureBatchKey();
+
+      var batch = SyncBatch.fromJson(await Api.syncAttendance(
+        idempotencyKey: key,
         deviceId: 'flutter-android',
         events: [for (final event in batchEvents) event.toApiJson()],
       ));
+      if (session != _session) return null;
 
-      await outbox.removeSettled(
-        batch.events.where((event) => event.isSettled).map((event) => event.clientEventId),
-      );
+      final sentIds = batchEvents.map((event) => event.clientEventId).toSet();
+
+      // A batch that is still processing may return no events. Poll the batch
+      // endpoint before rotating the key; otherwise the same events would be
+      // uploaded again under a new key.
+      if (batch.id > 0 && !sentIds.every(batch.eventIds.contains)) {
+        try {
+          final polled = SyncBatch.fromJson(await Api.getSyncBatch(batch.id));
+          if (polled.events.isNotEmpty) batch = polled;
+        } catch (_) {
+          // Keep the key and retry the poll on the next flush.
+        }
+      }
+      if (session != _session) return null;
+
+      final accounted = batch.eventIds;
+      final allAccounted = sentIds.every(accounted.contains);
+
+      final settled = batch.events.where((event) => event.isSettled).toList();
+      await outbox.removeSettled(settled.map((event) => event.clientEventId));
 
       final unsettled = batch.events.where((event) => !event.isSettled).toList();
       if (unsettled.isNotEmpty) {
@@ -238,45 +289,111 @@ class AppState extends ChangeNotifier {
         );
       }
 
-      // The server has answered for this batch; the next flush needs a new key.
-      await outbox.clearBatchKey();
+      lastRejected = settled.where((event) => event.isRejected).toList();
+      lastReview = settled.where((event) => event.isPendingReview).toList();
       lastSync = batch;
+
+      if (allAccounted) {
+        await outbox.clearBatchKey();
+      } else {
+        syncError = 'Server belum mengembalikan hasil lengkap. Coba sinkronkan lagi.';
+      }
+
+      if (lastRejected.isNotEmpty) {
+        syncError = lastRejected.first.errorMessage ?? 'Ada presensi yang ditolak server.';
+        clockNotice = syncError;
+      }
+      if (outbox.isEmpty && lastRejected.isEmpty && lastReview.isEmpty) {
+        clockNotice = null;
+      }
+
       return batch;
     } catch (error) {
+      if (session != _session) return null;
       final message = error is ApiError ? error.message : 'Tidak bisa terhubung ke server.';
-      await outbox.recordAttempt(
-        batchEvents.map((event) => event.clientEventId),
-        message,
-      );
+      if (batchEvents.isNotEmpty) {
+        await outbox.recordAttempt(
+          batchEvents.map((event) => event.clientEventId),
+          message,
+        );
+      }
       syncError = message;
       return null;
     } finally {
-      pendingSyncCount = outbox.length;
-      syncing = false;
-      notifyListeners();
+      if (session == _session) {
+        try {
+          await outbox.load();
+        } catch (_) {
+          // Keep the last known count if storage is temporarily unavailable.
+        }
+        pendingSyncCount = outbox.length;
+        syncing = false;
+        notifyListeners();
+      }
     }
   }
 
-  void login(Role r) {
-    role = r;
+  /// Loads the durable queue on startup and rebuilds today's clock state so a
+  /// restart cannot turn an offline clock-in into a second clock-in.
+  Future<void> restoreOfflineState() async {
+    try {
+      await outbox.load();
+    } catch (_) {
+      return;
+    }
+    pendingSyncCount = outbox.length;
+    _hydrateClockFromOutbox();
     notifyListeners();
   }
 
-  void logout() {
+  void _hydrateClockFromOutbox() {
+    final today = DateTime(now.year, now.month, now.day);
+    for (final event in outbox.events) {
+      final day = DateTime(event.occurredAt.year, event.occurredAt.month, event.occurredAt.day);
+      if (day != today) continue;
+      if (event.type == OutboxEvent.typeClockIn) {
+        if (clockIn == null || event.occurredAt.isAfter(clockIn!)) clockIn = event.occurredAt;
+      } else if (event.type == OutboxEvent.typeClockOut) {
+        if (clockOut == null || event.occurredAt.isAfter(clockOut!)) clockOut = event.occurredAt;
+      }
+    }
+  }
+
+  Future<void> login(Role r) async {
+    role = r;
+    // Scope the queue to this account, then restore anything it left behind.
+    await outbox.setOwner(Api.accountKey);
+    await restoreOfflineState();
+    notifyListeners();
+    // The token is available by now; drain the previous session's queue.
+    unawaited(flushOutbox());
+  }
+
+  Future<void> logout() async {
+    _session++;
     clockIn = null;
     clockOut = null;
     sim = Sim.normal;
-    // Queued attendance belongs to the signed-in account; never let the next
-    // account sync it.
-    outbox.clear();
     pendingSyncCount = 0;
     faceTemplates = [];
     faceEnrollment = null;
+    faceBusy = false;
+    faceEnrollmentFailed = false;
+    faceError = null;
     lastSync = null;
+    lastRejected = [];
+    lastReview = [];
     syncError = null;
     clockNotice = null;
     clockBusy = false;
-    notifyListeners();
+    syncing = false;
+    // Queued attendance belongs to the signed-in account; never let the next
+    // account sync it. Await so a fast re-login cannot race the clear.
+    try {
+      await outbox.clear();
+    } finally {
+      notifyListeners();
+    }
   }
 
   void setSim(Sim s) {
@@ -301,17 +418,30 @@ class AppState extends ChangeNotifier {
     final type = clockIn == null ? OutboxEvent.typeClockIn : OutboxEvent.typeClockOut;
     clockNotice = null;
 
+    // A restored queue can already contain today's clock-out; do not create a
+    // second one just because the clock screen still offers the button.
+    if (type == OutboxEvent.typeClockOut && clockOut != null) {
+      clockNotice = 'Presensi hari ini sudah lengkap.';
+      return;
+    }
+
     // Drain older offline events first; otherwise an online clock-in could be
     // recorded before the offline clock-in that logically precedes it.
-    await outbox.load();
-    if (!outbox.isEmpty) {
-      await flushOutbox();
+    try {
+      await outbox.load();
       if (!outbox.isEmpty) {
-        await _queueClock(type, t);
-        clockNotice = 'Tersimpan di perangkat. Akan disinkronkan saat online.';
-        notifyListeners();
-        return;
+        await flushOutbox();
+        if (!outbox.isEmpty) {
+          final saved = await _queueClock(type, t);
+          clockNotice = saved
+              ? 'Tersimpan di perangkat. Akan disinkronkan saat online.'
+              : 'Tidak bisa menyimpan presensi di perangkat.';
+          notifyListeners();
+          return;
+        }
       }
+    } catch (_) {
+      // Local storage unavailable; still let the online path try.
     }
 
     try {
@@ -325,15 +455,25 @@ class AppState extends ChangeNotifier {
         notifs.insert(0, Notif(NCat.absensi, 'Clock-out tercatat ${hm(t)}', 'Total kerja hari ini ${dur(worked)}', hm(t), 'HARI INI'));
       }
     } on ApiError catch (error) {
-      // The server answered and refused; queueing would replay a bad event.
-      clockNotice = error.message;
+      if (error.isServerError) {
+        // 5xx/gateway failures are transient: keep the event for retry.
+        final saved = await _queueClock(type, t);
+        clockNotice = saved
+            ? 'Server sedang bermasalah. Presensi disimpan di perangkat.'
+            : 'Server sedang bermasalah dan presensi gagal disimpan.';
+      } else {
+        // The server answered and refused; queueing would replay a bad event.
+        clockNotice = error.message;
+      }
     } catch (_) {
-      await _queueClock(type, t);
-      clockNotice = 'Tersimpan di perangkat. Akan disinkronkan saat online.';
+      final saved = await _queueClock(type, t);
+      clockNotice = saved
+          ? 'Tersimpan di perangkat. Akan disinkronkan saat online.'
+          : 'Tidak bisa menyimpan presensi di perangkat.';
       notifs.insert(0, Notif(
         NCat.absensi,
         type == OutboxEvent.typeClockIn ? 'Clock-in disimpan offline' : 'Clock-out disimpan offline',
-        'Akan disinkronkan otomatis saat koneksi tersedia',
+        'Akan disinkronkan saat kamu membuka Profil atau menekan Sinkronkan',
         hm(t),
         'HARI INI',
       ));
@@ -341,14 +481,19 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _queueClock(String type, DateTime t) async {
-    await outbox.add(type: type, occurredAt: t);
+  Future<bool> _queueClock(String type, DateTime t) async {
+    try {
+      await outbox.add(type: type, occurredAt: t);
+    } catch (_) {
+      return false;
+    }
     if (type == OutboxEvent.typeClockIn) {
       clockIn = t;
     } else {
       clockOut = t;
     }
     pendingSyncCount = outbox.length;
+    return true;
   }
 
   void toggleSalary() {

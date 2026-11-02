@@ -30,6 +30,9 @@ void main() async {
   } catch (_) {
     // Deep links are unavailable on this platform; start normally.
   }
+  // Restore queued attendance and today's clock state before the first frame.
+  // Syncing waits until login supplies a token.
+  await app.restoreOfflineState();
   runApp(const HadirMetrik());
 }
 

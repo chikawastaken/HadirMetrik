@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hadirmetrik/api.dart';
+import 'package:hadirmetrik/screens/auth.dart';
 import 'package:hadirmetrik/screens/face.dart';
 import 'package:hadirmetrik/state.dart';
 import 'package:hadirmetrik/theme.dart';
@@ -21,6 +22,7 @@ void main() {
   setUp(() {
     app.faceTemplates = [];
     app.faceEnrollment = null;
+    app.faceEnrollmentFailed = false;
     app.faceError = null;
     app.faceBusy = false;
   });
@@ -52,6 +54,19 @@ void main() {
     expect(find.text('Wajah terverifikasi'), findsNothing);
     expect(find.text('Versi 2'), findsOneWidget);
     expect(find.text('Cabut'), findsOneWidget);
+  });
+
+  testWidgets('a failed upload is not reported as sent', (tester) async {
+    app.faceEnrollment = null;
+    app.faceEnrollmentFailed = true;
+    app.faceError = 'Tidak bisa terhubung ke server.';
+
+    await tester.pumpWidget(_host(const FaceSuccess()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pendaftaran belum terkirim'), findsOneWidget);
+    expect(find.text('Pendaftaran wajah dikirim'), findsNothing);
+    expect(find.text('Coba Lagi'), findsOneWidget);
   });
 
   testWidgets('profile card summarises the pending template', (tester) async {

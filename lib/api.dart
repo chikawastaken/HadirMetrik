@@ -8,9 +8,13 @@ const baseUrl = String.fromEnvironment(
 );
 
 class ApiError implements Exception {
-  ApiError(this.message, [this.errors]);
+  ApiError(this.message, [this.errors, this.statusCode]);
   final String message;
   final Map<String, dynamic>? errors;
+  final int? statusCode;
+
+  /// 5xx and gateway failures are transient: the event should be queued.
+  bool get isServerError => statusCode != null && statusCode! >= 500;
 
   /// Machine-readable reason from `errors.code`, e.g. `INVITATION_NOT_OWNED`.
   String? get code {
@@ -27,6 +31,9 @@ class ApiError implements Exception {
 class Api {
   static String? token;
 
+  /// Identifier of the signed-in account, used to scope the offline outbox.
+  static String? accountKey;
+
   /// Overridable for tests.
   static http.Client client = http.Client();
 
@@ -41,12 +48,12 @@ class Api {
     try {
       body = jsonDecode(r.body) as Map<String, dynamic>;
     } catch (_) {
-      throw ApiError('Respons server tidak valid (${r.statusCode})');
+      throw ApiError('Respons server tidak valid (${r.statusCode})', null, r.statusCode);
     }
     if (r.statusCode >= 200 && r.statusCode < 300 && body['success'] == true) {
       return body['data'];
     }
-    throw ApiError(body['message'] ?? 'Terjadi kesalahan', body['errors']);
+    throw ApiError(body['message'] ?? 'Terjadi kesalahan', body['errors'], r.statusCode);
   }
 
   static Map<String, dynamic> _handle(http.Response r) {
@@ -100,6 +107,8 @@ class Api {
       'new_password_confirmation': next,
     });
     token = data['token'] as String?;
+    // No identifier was typed here; scope the outbox to the created user.
+    _rememberAccount(data['user'], 'invitation-$invitation');
     return data;
   }
 
@@ -117,7 +126,25 @@ class Api {
       'device_name': 'Flutter Android',
     });
     token = data['token'] as String?;
+    _rememberAccount(data['user'], identifier);
     return data;
+  }
+
+  /// Stable key for the offline outbox. Prefer the user id so the same person
+  /// keeps their queue whether they sign in by email, NIK, or invitation.
+  static void _rememberAccount(dynamic user, [String? fallback]) {
+    String? key;
+    if (user is Map) {
+      final id = user['id'];
+      final email = user['email'];
+      if (id != null) {
+        key = 'u:$id';
+      } else if (email is String && email.trim().isNotEmpty) {
+        key = email.trim().toLowerCase();
+      }
+    }
+    key ??= fallback?.trim().toLowerCase();
+    accountKey = (key == null || key.isEmpty) ? null : key;
   }
 
   static Future<void> logout() async {
@@ -125,6 +152,7 @@ class Api {
       await post('/logout', {});
     } finally {
       token = null;
+      accountKey = null;
     }
   }
 
@@ -143,9 +171,9 @@ class Api {
   }) =>
       post('/face/enroll', {
         'sample_count': sampleCount,
-        if (provider != null) 'provider': provider,
-        if (templateRef != null) 'template_ref': templateRef,
-        if (metadata != null) 'metadata': metadata,
+        'provider': ?provider,
+        'template_ref': ?templateRef,
+        'metadata': ?metadata,
       });
 
   static Future<Map<String, dynamic>> getFaceEnrollment(int id) => get('/face/enrollments/$id');
@@ -166,7 +194,7 @@ class Api {
   }) =>
       post('/sync/attendance', {
         'idempotency_key': idempotencyKey,
-        if (deviceId != null) 'device_id': deviceId,
+        'device_id': ?deviceId,
         'events': events,
       });
 

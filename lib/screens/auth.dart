@@ -170,7 +170,7 @@ class _LoginState extends State<Login> {
       final role = account?['role'] as String?;
       final hr = role == 'hr' || role == 'admin';
       final mustChange = data['must_change_password'] == true || account?['must_change_password'] == true;
-      app.login(hr ? Role.hr : Role.karyawan);
+      await app.login(hr ? Role.hr : Role.karyawan);
       await app.fetchProfile(); // muat profil baru setelah login
       if (mustChange) {
         Navigator.of(context).pushReplacement(fadeRoute(const ChangePassword()));
@@ -369,7 +369,8 @@ class _InvitationSetPasswordState extends State<InvitationSetPassword> {
       final data = await Api.setPasswordFromInvitation(token, next.text);
       if (!mounted) return;
       final role = (data['user'] as Map?)?['role'];
-      app.login(role == 'hr' || role == 'admin' ? Role.hr : Role.karyawan);
+      await app.login(role == 'hr' || role == 'admin' ? Role.hr : Role.karyawan);
+      if (!mounted) return;
       Navigator.of(context).pushReplacement(fadeRoute(const InvitationAccept()));
     } on ApiError catch (e) {
       if (!mounted) return;
@@ -502,7 +503,7 @@ class _InvitationAcceptState extends State<InvitationAccept> {
   Future<void> _switchAccount() async {
     DeepLink.remember(_token!);
     Api.token = null;
-    app.logout();
+    await app.logout();
     if (!mounted) return;
     resetTo(context, const Login());
   }
@@ -869,21 +870,56 @@ class FaceSuccess extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enrollment = app.faceEnrollment;
-    final pending = enrollment == null || enrollment.isPending || enrollment.isProcessing;
-    final statusLabel = switch (enrollment?.status) {
-      'pending' => 'Menunggu verifikasi',
-      'processing' => 'Sedang diproses',
-      'completed' => 'Terverifikasi',
-      'rejected' => 'Ditolak',
-      'failed' => 'Gagal',
-      _ => 'Belum terkirim',
-    };
+    final failed = app.faceEnrollmentFailed;
+    final rejected = enrollment?.isRejected ?? false;
+    final completed = enrollment?.isCompleted ?? false;
+    final pending = !failed &&
+        !rejected &&
+        !completed &&
+        (enrollment == null || enrollment.isPending || enrollment.isProcessing);
+    final statusLabel = failed
+        ? 'Belum terkirim'
+        : switch (enrollment?.status) {
+            'pending' => 'Menunggu verifikasi',
+            'processing' => 'Sedang diproses',
+            'completed' => 'Terverifikasi',
+            'rejected' => 'Ditolak',
+            'failed' => 'Gagal',
+            _ => 'Belum terkirim',
+          };
+    final bad = failed || rejected || (enrollment?.isFailed ?? false);
+    final tone = completed ? Tone.success : bad ? Tone.danger : Tone.warning;
+    final icon = completed
+        ? LucideIcons.check
+        : bad
+            ? LucideIcons.x
+            : LucideIcons.hourglass;
+    final title = failed
+        ? 'Pendaftaran belum terkirim'
+        : completed
+            ? 'Wajah terverifikasi'
+            : rejected
+                ? 'Pendaftaran ditolak'
+                : 'Pendaftaran wajah dikirim';
+    final caption = failed
+        ? 'Periksa koneksi lalu coba lagi'
+        : completed
+            ? 'Siap dipakai untuk absen'
+            : rejected
+                ? 'Daftarkan ulang wajah'
+                : 'Menunggu model wajah';
 
     return Screen(
       header: const SizedBox(height: 24),
       bottom: BottomActions([
+        if (failed)
+          Btn(
+            'Coba Lagi',
+            kind: BtnKind.soft,
+            icon: LucideIcons.refreshCw,
+            onTap: () => Navigator.of(context).pushReplacement(fadeRoute(FaceTips(first: first))),
+          ),
         Btn(first ? 'Lanjut ke Beranda' : 'Selesai', onTap: () {
-          app.faceEnrolled = true;
           first ? enterApp(context) : Navigator.pop(context);
         }),
       ]),
@@ -905,16 +941,12 @@ class FaceSuccess extends StatelessWidget {
           ),
         ),
         gap24,
-        Text(
-          enrollment == null ? 'Wajah terekam di perangkat' : 'Pendaftaran wajah dikirim',
-          style: T.h1,
-          textAlign: TextAlign.center,
-        ),
+        Text(title, style: T.h1, textAlign: TextAlign.center),
         gap12,
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Pill(statusLabel, icon: pending ? LucideIcons.hourglass : LucideIcons.check, tone: pending ? Tone.warning : Tone.success),
+          Pill(statusLabel, icon: icon, tone: tone),
           gap8,
-          Text(pending ? 'Menunggu model wajah' : 'Siap dipakai untuk absen', style: T.caption),
+          Text(caption, style: T.caption),
         ]),
         gap24,
         AppCard(
@@ -926,7 +958,23 @@ class FaceSuccess extends StatelessWidget {
             const InfoRow('Penyimpanan', 'Referensi buram', icon: LucideIcons.lock),
           ]),
         ),
-        if (pending) ...[
+        if (failed) ...[
+          gap12,
+          Banner2(
+            'Pendaftaran gagal dikirim',
+            body: app.faceError ?? 'Periksa koneksi lalu coba lagi.',
+            tone: Tone.danger,
+            icon: LucideIcons.cloudOff,
+          ),
+        ] else if (rejected) ...[
+          gap12,
+          Banner2(
+            'Pendaftaran ditolak',
+            body: enrollment?.rejectionReason ?? 'Daftarkan ulang wajah dengan pencahayaan yang cukup.',
+            tone: Tone.danger,
+            icon: LucideIcons.shieldX,
+          ),
+        ] else if (pending) ...[
           gap12,
           const Banner2(
             'Verifikasi wajah belum aktif',

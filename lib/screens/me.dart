@@ -35,7 +35,7 @@ class Profile extends StatelessWidget {
     } catch (_) {
       Api.token = null;
     } finally {
-      app.logout();
+      await app.logout();
       if (context.mounted) resetTo(context, const Login());
     }
   }
