@@ -95,6 +95,7 @@ class _SyncCardState extends State<SyncCard> {
         listenable: app,
         builder: (context, _) {
           final pending = app.pendingSyncCount;
+          final attempts = app.pendingAttempts;
           final last = app.lastSync;
           final rejected = app.lastRejected.length;
           final review = app.lastReview.length;
@@ -107,9 +108,11 @@ class _SyncCardState extends State<SyncCard> {
                       : '$pending presensi menunggu';
           final caption = app.syncError != null
               ? app.syncError!
-              : last == null
-                  ? 'Dikirim saat aplikasi dibuka atau lewat tombol di bawah.'
-                  : 'Batch #${last.id} · ${last.processedEvents}/${last.totalEvents} diproses';
+              : pending > 0 && attempts > 0
+                  ? '$attempts percobaan. Coba lagi lewat tombol atau saat aplikasi dibuka.'
+                  : last == null
+                      ? 'Dikirim saat aplikasi dibuka atau lewat tombol di bawah.'
+                      : 'Batch #${last.id} · ${last.processedEvents}/${last.totalEvents} diproses';
           final bad = app.syncError != null || rejected > 0;
 
           return AppCard(
@@ -136,7 +139,7 @@ class _SyncCardState extends State<SyncCard> {
                 icon: LucideIcons.refreshCw,
                 height: 48,
                 busy: app.syncing,
-                onTap: app.syncing ? null : () => app.flushOutbox(),
+                onTap: app.syncing ? null : () => app.flushOutbox(force: true),
               ),
             ]),
           );

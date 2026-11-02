@@ -32,6 +32,35 @@ void main() {
     expect((templates.first as Map<String, dynamic>)['version'], 2);
   });
 
+  test('getFaceTemplates accepts a nested paginated envelope', () async {
+    Api.client = MockClient((request) async => _json({
+          'success': true,
+          'data': {
+            'data': [
+              {'id': 9, 'version': 1, 'status': 'pending'},
+            ],
+          },
+        }));
+
+    final templates = await Api.getFaceTemplates();
+
+    expect(templates, hasLength(1));
+  });
+
+  test('getFaceTemplates rejects an unexpected payload', () async {
+    Api.client = MockClient((request) async => _json({
+          'success': true,
+          'data': {'unexpected': true},
+        }));
+
+    expect(
+      () => Api.getFaceTemplates(),
+      throwsA(isA<ApiError>()
+          .having((e) => e.statusCode, 'statusCode', 200)
+          .having((e) => e.message, 'message', contains('tidak valid'))),
+    );
+  });
+
   test('submitFaceEnrollment posts the sample count and provider', () async {
     late Map<String, dynamic> sent;
     Api.client = MockClient((request) async {

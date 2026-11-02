@@ -118,5 +118,82 @@ void main() {
     await reloaded.load();
     expect(reloaded.events.single.attempts, 1);
     expect(reloaded.events.single.lastError, 'timeout');
+    expect(reloaded.events.single.nextAttemptAt, isNotNull);
   });
+
+  test('automatic retries back off and stop at the attempt cap', () async {
+    final outbox = Outbox(store: MemoryOutboxStore());
+    await outbox.load();
+    final event = await outbox.add(type: OutboxEvent.typeClockIn, occurredAt: DateTime.utc(2026, 11, 1, 1));
+
+    await outbox.recordAttempt([event.clientEventId], 'timeout');
+    expect(outbox.dueEvents(), isEmpty);
+    expect(outbox.dueEvents(force: true), hasLength(1));
+    expect(outbox.nextAttemptAt, isNotNull);
+
+    for (var i = 1; i < Outbox.maxAutoAttempts; i++) {
+      await outbox.recordAttempt([event.clientEventId], 'timeout');
+    }
+    // The schedule has passed, but automatic retries stop after the cap.
+    outbox.events.single.nextAttemptAt = DateTime.now().subtract(const Duration(minutes: 1));
+    expect(outbox.dueEvents(), isEmpty);
+    // A manual retry still sends it.
+    expect(outbox.dueEvents(force: true), hasLength(1));
+  });
+
+  test('each event keeps its own failure reason', () async {
+    final outbox = Outbox(store: MemoryOutboxStore());
+    await outbox.load();
+    final a = await outbox.add(type: OutboxEvent.typeClockIn, occurredAt: DateTime.utc(2026, 11, 1, 1));
+    final b = await outbox.add(type: OutboxEvent.typeClockOut, occurredAt: DateTime.utc(2026, 11, 1, 9));
+
+    await outbox.recordAttempts({
+      a.clientEventId: 'masuk gagal',
+      b.clientEventId: 'keluar gagal',
+    });
+
+    expect(outbox.events.first.lastError, 'masuk gagal');
+    expect(outbox.events.last.lastError, 'keluar gagal');
+  });
+
+  test('a clock-out never overtakes a clock-in that is backing off', () async {
+    final outbox = Outbox(store: MemoryOutboxStore());
+    await outbox.load();
+    final clockIn = await outbox.add(type: OutboxEvent.typeClockIn, occurredAt: DateTime.utc(2026, 11, 1, 1));
+    await outbox.add(type: OutboxEvent.typeClockOut, occurredAt: DateTime.utc(2026, 11, 1, 9));
+
+    await outbox.recordAttempt([clockIn.clientEventId], 'timeout');
+
+    expect(outbox.dueEvents(), isEmpty);
+
+    outbox.events.first.nextAttemptAt = DateTime.now().subtract(const Duration(seconds: 1));
+    expect(outbox.dueEvents().map((e) => e.type), [OutboxEvent.typeClockIn, OutboxEvent.typeClockOut]);
+  });
+
+  test('a corrupt payload is reset and rewritten', () async {
+    final store = MemoryOutboxStore('not-json');
+    final outbox = Outbox(store: store);
+    await outbox.load();
+
+    expect(outbox.isEmpty, isTrue);
+    expect(store.value, contains('"events":[]'));
+  });
+
+  test('a failed storage write is not silently ignored', () async {
+    final outbox = Outbox(store: _ThrowingStore());
+    await outbox.load();
+
+    await expectLater(
+      outbox.add(type: OutboxEvent.typeClockIn, occurredAt: DateTime.utc(2026, 11, 1, 1)),
+      throwsA(isA<OutboxStorageException>()),
+    );
+  });
+}
+
+class _ThrowingStore implements OutboxStore {
+  @override
+  Future<String?> read() async => null;
+
+  @override
+  Future<void> write(String value) async => throw const OutboxStorageException('disk penuh');
 }

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hadirmetrik/api.dart';
+import 'package:hadirmetrik/models/face.dart';
 import 'package:hadirmetrik/outbox.dart';
 import 'package:hadirmetrik/state.dart';
 import 'package:http/http.dart' as http;
@@ -183,9 +184,54 @@ void main() {
     expect(state.outbox.length, 1);
     expect(state.syncError, isNotNull);
 
-    await state.flushOutbox();
+    await state.flushOutbox(force: true);
     expect(keys, hasLength(2));
     expect(keys.first, keys.last);
+  });
+
+  test('an automatic flush waits for the retry window', () async {
+    var calls = 0;
+    Api.client = MockClient((request) async {
+      calls++;
+      throw http.ClientException('offline');
+    });
+    final state = _state();
+    await state.outbox.load();
+    await state.outbox.add(type: OutboxEvent.typeClockIn, occurredAt: DateTime.utc(2026, 11, 1, 1));
+
+    await state.flushOutbox();
+    expect(calls, 1);
+
+    await state.flushOutbox();
+    expect(calls, 1);
+    expect(state.syncError, contains('jadwal'));
+
+    await state.flushOutbox(force: true);
+    expect(calls, 2);
+  });
+
+  test('revoke falls back to the local template when the body is empty', () async {
+    Api.client = MockClient((request) async => _json({'success': true, 'data': {}}));
+    final state = _state();
+    state.faceTemplates = [FaceTemplate(id: 3, version: 2, status: 'active')];
+    state.faceEnrolled = true;
+
+    final ok = await state.revokeFaceTemplate(3);
+
+    expect(ok, isTrue);
+    expect(state.faceTemplates.single.status, 'revoked');
+    expect(state.faceEnrolled, isFalse);
+  });
+
+  test('delete falls back to the local template when the body is empty', () async {
+    Api.client = MockClient((request) async => _json({'success': true, 'data': {}}));
+    final state = _state();
+    state.faceTemplates = [FaceTemplate(id: 4, version: 1, status: 'pending')];
+
+    final ok = await state.deleteFaceTemplate(4);
+
+    expect(ok, isTrue);
+    expect(state.faceTemplates.single.status, 'deleted');
   });
 
   test('pending_review events leave the outbox but stay visible', () async {
