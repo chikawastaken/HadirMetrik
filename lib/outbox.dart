@@ -16,6 +16,7 @@ class OutboxEvent {
     this.longitude,
     this.attempts = 0,
     this.lastError,
+    this.nextAttemptAt,
   });
 
   final String clientEventId;
@@ -26,6 +27,9 @@ class OutboxEvent {
   int attempts;
   String? lastError;
 
+  /// Earliest time an automatic retry may send this event again.
+  DateTime? nextAttemptAt;
+
   Map<String, dynamic> toJson() => {
         'client_event_id': clientEventId,
         'type': type,
@@ -34,6 +38,7 @@ class OutboxEvent {
         'longitude': longitude,
         'attempts': attempts,
         'last_error': lastError,
+        'next_attempt_at': nextAttemptAt?.toUtc().toIso8601String(),
       };
 
   /// Shape expected by `POST /sync/attendance`.
@@ -54,9 +59,22 @@ class OutboxEvent {
         occurredAt: DateTime.parse(json['occurred_at'] as String),
         latitude: (json['latitude'] as num?)?.toDouble(),
         longitude: (json['longitude'] as num?)?.toDouble(),
-        attempts: json['attempts'] as int? ?? 0,
+        attempts: _asInt(json['attempts']),
         lastError: json['last_error'] as String?,
+        nextAttemptAt: _asTime(json['next_attempt_at']),
       );
+}
+
+int _asInt(dynamic value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? 0;
+  return 0;
+}
+
+DateTime? _asTime(dynamic value) {
+  if (value is! String || value.isEmpty) return null;
+  return DateTime.tryParse(value)?.toLocal();
 }
 
 /// Persistence seam so tests can run without platform plugins.
@@ -73,8 +91,21 @@ class PrefsOutboxStore implements OutboxStore {
 
   @override
   Future<void> write(String value) async {
-    await (await SharedPreferences.getInstance()).setString(_key, value);
+    final prefs = await SharedPreferences.getInstance();
+    final saved = await prefs.setString(_key, value);
+    if (!saved) {
+      throw const OutboxStorageException('Gagal menyimpan antrean presensi di perangkat.');
+    }
   }
+}
+
+class OutboxStorageException implements Exception {
+  const OutboxStorageException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
 }
 
 class MemoryOutboxStore implements OutboxStore {
@@ -97,6 +128,10 @@ class MemoryOutboxStore implements OutboxStore {
 class Outbox {
   Outbox({OutboxStore? store}) : _store = store ?? PrefsOutboxStore();
 
+  /// Automatic flushes stop retrying an event after this many attempts; the
+  /// user can still force a manual retry.
+  static const maxAutoAttempts = 5;
+
   final OutboxStore _store;
   final List<OutboxEvent> _events = [];
   final Random _random = Random.secure();
@@ -113,6 +148,39 @@ class Outbox {
 
   /// Account that owns the queued events; null until the first login.
   String? get owner => _owner;
+
+  /// Total retry attempts across queued events, for the sync card.
+  int get pendingAttempts => _events.fold(0, (total, event) => total + event.attempts);
+
+  /// Earliest future retry, or null when something is ready right away.
+  DateTime? get nextAttemptAt {
+    DateTime? earliest;
+    for (final event in _events) {
+      final next = event.nextAttemptAt;
+      if (next == null || !next.isAfter(DateTime.now())) continue;
+      if (earliest == null || next.isBefore(earliest)) earliest = next;
+    }
+    return earliest;
+  }
+
+  /// Events that may be sent by an automatic flush right now.
+  ///
+  /// Only a leading, causally ordered run is returned: never send a clock-out
+  /// while the clock-in before it is still backing off.
+  List<OutboxEvent> dueEvents({int limit = 100, bool force = false}) {
+    final now = DateTime.now();
+    final due = <OutboxEvent>[];
+    for (final event in _events) {
+      if (!force) {
+        if (event.attempts >= maxAutoAttempts) break;
+        final next = event.nextAttemptAt;
+        if (next != null && next.isAfter(now)) break;
+      }
+      due.add(event);
+      if (due.length >= limit) break;
+    }
+    return due;
+  }
 
   String get batchKey {
     if (_batchKey != null) return _batchKey!;
@@ -164,6 +232,11 @@ class Outbox {
       _events.clear();
       _batchKey = null;
       _loaded = true;
+      try {
+        await _persist();
+      } catch (_) {
+        // Storage may be unavailable; the in-memory queue is still usable.
+      }
     } finally {
       _loading = null;
     }
@@ -208,16 +281,30 @@ class Outbox {
     await _persist();
   }
 
-  Future<void> recordAttempt(Iterable<String> clientEventIds, String error) async {
-    final ids = clientEventIds.toSet();
-    if (ids.isEmpty) return;
+  /// Records one failure per event, so each event keeps its own reason and
+  /// retry schedule instead of inheriting the first event's error.
+  Future<void> recordAttempts(Map<String, String> errors, {bool schedule = true}) async {
+    if (errors.isEmpty) return;
+    final now = DateTime.now();
     for (final event in _events) {
-      if (ids.contains(event.clientEventId)) {
-        event.attempts++;
-        event.lastError = error;
-      }
+      final error = errors[event.clientEventId];
+      if (error == null) continue;
+      event.attempts++;
+      event.lastError = error;
+      event.nextAttemptAt = schedule ? now.add(_retryDelay(event.attempts)) : null;
     }
     await _persist();
+  }
+
+  /// Convenience for a single message applied to several events.
+  Future<void> recordAttempt(Iterable<String> clientEventIds, String error) =>
+      recordAttempts({for (final id in clientEventIds) id: error});
+
+  /// 5s, 10s, 20s, ... capped at 5 minutes.
+  static Duration _retryDelay(int attempts) {
+    final exponent = attempts.clamp(1, 7).toInt() - 1;
+    final seconds = 5 * (1 << exponent);
+    return Duration(seconds: seconds > 300 ? 300 : seconds);
   }
 
   Future<void> clearBatchKey() async {

@@ -72,7 +72,7 @@ class ClockScreen extends StatelessWidget {
                     height: 40,
                     kind: BtnKind.soft,
                     busy: app.syncing,
-                    onTap: app.syncing ? null : () => app.flushOutbox(),
+                    onTap: app.syncing ? null : () => app.flushOutbox(force: true),
                   ),
                 ]),
               ),

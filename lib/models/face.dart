@@ -39,14 +39,14 @@ class FaceEnrollment {
       };
 
   factory FaceEnrollment.fromJson(Map<String, dynamic> json) => FaceEnrollment(
-        id: json['id'] ?? 0,
-        status: json['status'] ?? 'pending',
-        provider: json['provider'],
-        sampleCount: json['sample_count'] ?? 0,
-        rejectionReason: json['rejection_reason'],
-        faceTemplateId: json['face_template_id'],
-        submittedAt: json['submitted_at'],
-        processedAt: json['processed_at'],
+        id: _faceInt(json['id']),
+        status: _faceString(json['status'], 'pending'),
+        provider: _faceStringOrNull(json['provider']),
+        sampleCount: _faceInt(json['sample_count']),
+        rejectionReason: _faceStringOrNull(json['rejection_reason']),
+        faceTemplateId: _faceIntOrNull(json['face_template_id']),
+        submittedAt: _faceStringOrNull(json['submitted_at']),
+        processedAt: _faceStringOrNull(json['processed_at']),
       );
 }
 
@@ -85,14 +85,41 @@ class FaceTemplate {
       };
 
   factory FaceTemplate.fromJson(Map<String, dynamic> json) => FaceTemplate(
-        id: json['id'] ?? 0,
-        version: json['version'] ?? 1,
-        status: json['status'] ?? 'pending',
-        provider: json['provider'],
-        enrolledAt: json['enrolled_at'],
-        revokedAt: json['revoked_at'],
-        deletedAt: json['deleted_at'],
+        id: _faceInt(json['id']),
+        version: _faceInt(json['version'], 1),
+        status: _faceString(json['status'], 'pending'),
+        provider: _faceStringOrNull(json['provider']),
+        enrolledAt: _faceStringOrNull(json['enrolled_at']),
+        revokedAt: _faceStringOrNull(json['revoked_at']),
+        deletedAt: _faceStringOrNull(json['deleted_at']),
       );
+}
+
+int _faceInt(dynamic value, [int fallback = 0]) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? fallback;
+  return fallback;
+}
+
+int? _faceIntOrNull(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value);
+  return null;
+}
+
+String _faceString(dynamic value, [String fallback = '']) {
+  if (value is String) return value;
+  if (value == null) return fallback;
+  return value.toString();
+}
+
+String? _faceStringOrNull(dynamic value) {
+  if (value is String) return value;
+  if (value == null) return null;
+  return value.toString();
 }
 
 class FaceEnrollmentResult {
@@ -102,7 +129,15 @@ class FaceEnrollmentResult {
   FaceEnrollmentResult({required this.enrollment, required this.template});
 
   factory FaceEnrollmentResult.fromJson(Map<String, dynamic> json) => FaceEnrollmentResult(
-        enrollment: FaceEnrollment.fromJson(json['enrollment'] ?? {}),
-        template: FaceTemplate.fromJson(json['template'] ?? {}),
+        enrollment: FaceEnrollment.fromJson(
+          json['enrollment'] is Map<String, dynamic>
+              ? json['enrollment'] as Map<String, dynamic>
+              : const {},
+        ),
+        template: FaceTemplate.fromJson(
+          json['template'] is Map<String, dynamic>
+              ? json['template'] as Map<String, dynamic>
+              : const {},
+        ),
       );
 }

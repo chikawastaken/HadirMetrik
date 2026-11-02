@@ -47,6 +47,13 @@ void main() {
       expect(revoked.canDelete, isTrue);
       expect(deleted.canDelete, isFalse);
     });
+
+    test('parses ids and versions that arrive as strings', () {
+      final template = FaceTemplate.fromJson({'id': '8', 'version': '3', 'status': 'pending'});
+
+      expect(template.id, 8);
+      expect(template.version, 3);
+    });
   });
 
   group('SyncBatch', () {
@@ -111,6 +118,35 @@ void main() {
 
       expect(event.isSettled, isTrue);
       expect(event.isPendingReview, isTrue);
+    });
+
+    test('parses string ids and ignores malformed event rows', () {
+      final batch = SyncBatch.fromJson({
+        'id': '7',
+        'idempotency_key': 'batch-007',
+        'status': 'partial',
+        'total_events': '2',
+        'processed_events': '1',
+        'failed_events': '1',
+        'events': [
+          {
+            'id': '1',
+            'client_event_id': 'evt-1',
+            'type': 'clock_in',
+            'status': 'synced',
+            'clock_record_id': '9',
+          },
+          'not-a-map',
+        ],
+      });
+
+      expect(batch.id, 7);
+      expect(batch.totalEvents, 2);
+      expect(batch.processedEvents, 1);
+      expect(batch.failedEvents, 1);
+      expect(batch.events, hasLength(1));
+      expect(batch.events.single.id, 1);
+      expect(batch.events.single.clockRecordId, 9);
     });
   });
 }

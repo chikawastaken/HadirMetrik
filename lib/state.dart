@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'api.dart';
 
 import 'data.dart';
+import 'device.dart';
 import 'models/attendance_sync.dart';
 import 'models/employee_profile.dart';
 import 'models/face.dart';
@@ -58,6 +59,9 @@ class AppState extends ChangeNotifier {
   String? clockNotice;
   bool clockBusy = false;
   int _session = 0;
+
+  int get pendingAttempts => outbox.pendingAttempts;
+  DateTime? get nextSyncAt => outbox.nextAttemptAt;
 
   FaceTemplate? get latestFaceTemplate => faceTemplates.isEmpty ? null : faceTemplates.first;
 
@@ -185,8 +189,22 @@ class AppState extends ChangeNotifier {
     faceError = null;
     notifyListeners();
     try {
-      final template = FaceTemplate.fromJson(await Api.revokeFaceTemplate(id));
+      final data = await Api.revokeFaceTemplate(id);
       if (session != _session) return false;
+      var template = FaceTemplate.fromJson(data);
+      if (template.id == 0) {
+        // Some proxies/gateways strip the body; fall back to the local row.
+        final current = _templateById(id);
+        if (current == null) {
+          faceError = 'Respons server tidak valid.';
+          return false;
+        }
+        template = _copyWithStatus(
+          current,
+          'revoked',
+          revokedAt: DateTime.now().toUtc().toIso8601String(),
+        );
+      }
       _replaceTemplate(template);
       faceEnrolled = faceTemplates.any((existing) => existing.isActive);
       return true;
@@ -208,8 +226,22 @@ class AppState extends ChangeNotifier {
     faceError = null;
     notifyListeners();
     try {
-      final template = FaceTemplate.fromJson(await Api.deleteFaceTemplate(id));
+      final data = await Api.deleteFaceTemplate(id);
       if (session != _session) return false;
+      var template = FaceTemplate.fromJson(data);
+      if (template.id == 0) {
+        // Some proxies/gateways strip the body; fall back to the local row.
+        final current = _templateById(id);
+        if (current == null) {
+          faceError = 'Respons server tidak valid.';
+          return false;
+        }
+        template = _copyWithStatus(
+          current,
+          'deleted',
+          deletedAt: DateTime.now().toUtc().toIso8601String(),
+        );
+      }
       _replaceTemplate(template);
       faceEnrolled = faceTemplates.any((existing) => existing.isActive);
       return true;
@@ -225,6 +257,29 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  FaceTemplate? _templateById(int id) {
+    for (final template in faceTemplates) {
+      if (template.id == id) return template;
+    }
+    return null;
+  }
+
+  FaceTemplate _copyWithStatus(
+    FaceTemplate source,
+    String status, {
+    String? revokedAt,
+    String? deletedAt,
+  }) =>
+      FaceTemplate(
+        id: source.id,
+        version: source.version,
+        status: status,
+        provider: source.provider,
+        enrolledAt: source.enrolledAt,
+        revokedAt: revokedAt ?? source.revokedAt,
+        deletedAt: deletedAt ?? source.deletedAt,
+      );
+
   void _replaceTemplate(FaceTemplate template) {
     faceTemplates = [
       template,
@@ -234,7 +289,7 @@ class AppState extends ChangeNotifier {
 
   /// Uploads queued offline events. The batch key is kept until the server
   /// answers, so a timeout followed by a retry cannot create duplicates.
-  Future<SyncBatch?> flushOutbox() async {
+  Future<SyncBatch?> flushOutbox({bool force = false}) async {
     if (syncing) return lastSync;
 
     final session = _session;
@@ -250,12 +305,18 @@ class AppState extends ChangeNotifier {
       pendingSyncCount = outbox.length;
       if (outbox.isEmpty) return lastSync;
 
-      batchEvents = outbox.events.take(100).toList();
+      batchEvents = outbox.dueEvents(force: force);
+      if (batchEvents.isEmpty) {
+        syncError = 'Menunggu jadwal coba ulang. Tekan Sinkronkan untuk mencoba sekarang.';
+        return lastSync;
+      }
+
+      final deviceId = await DeviceIdentity.get();
       final key = await outbox.ensureBatchKey();
 
       var batch = SyncBatch.fromJson(await Api.syncAttendance(
         idempotencyKey: key,
-        deviceId: 'flutter-android',
+        deviceId: deviceId,
         events: [for (final event in batchEvents) event.toApiJson()],
       ));
       if (session != _session) return null;
@@ -279,26 +340,42 @@ class AppState extends ChangeNotifier {
       final allAccounted = sentIds.every(accounted.contains);
 
       final settled = batch.events.where((event) => event.isSettled).toList();
-      await outbox.removeSettled(settled.map((event) => event.clientEventId));
-
       final unsettled = batch.events.where((event) => !event.isSettled).toList();
+
+      var persisted = true;
+      try {
+        await outbox.removeSettled(settled.map((event) => event.clientEventId));
+      } catch (_) {
+        persisted = false;
+      }
       if (unsettled.isNotEmpty) {
-        await outbox.recordAttempt(
-          unsettled.map((event) => event.clientEventId),
-          unsettled.first.errorMessage ?? 'Belum tersinkron.',
-        );
+        try {
+          await outbox.recordAttempts({
+            for (final event in unsettled)
+              event.clientEventId: event.errorMessage ?? 'Belum tersinkron.',
+          });
+        } catch (_) {
+          persisted = false;
+        }
       }
 
       lastRejected = settled.where((event) => event.isRejected).toList();
       lastReview = settled.where((event) => event.isPendingReview).toList();
       lastSync = batch;
 
-      if (allAccounted) {
-        await outbox.clearBatchKey();
-      } else {
+      if (allAccounted && persisted) {
+        try {
+          await outbox.clearBatchKey();
+        } catch (_) {
+          persisted = false;
+        }
+      } else if (!allAccounted) {
         syncError = 'Server belum mengembalikan hasil lengkap. Coba sinkronkan lagi.';
       }
 
+      if (!persisted) {
+        syncError = 'Server menjawab, tetapi hasil gagal disimpan di perangkat.';
+      }
       if (lastRejected.isNotEmpty) {
         syncError = lastRejected.first.errorMessage ?? 'Ada presensi yang ditolak server.';
         clockNotice = syncError;
@@ -310,12 +387,19 @@ class AppState extends ChangeNotifier {
       return batch;
     } catch (error) {
       if (session != _session) return null;
-      final message = error is ApiError ? error.message : 'Tidak bisa terhubung ke server.';
+      final message = switch (error) {
+        ApiError apiError => apiError.message,
+        OutboxStorageException storageError => storageError.message,
+        _ => 'Tidak bisa terhubung ke server.',
+      };
       if (batchEvents.isNotEmpty) {
-        await outbox.recordAttempt(
-          batchEvents.map((event) => event.clientEventId),
-          message,
-        );
+        try {
+          await outbox.recordAttempts({
+            for (final event in batchEvents) event.clientEventId: message,
+          });
+        } catch (_) {
+          // Keep the original error; the queue is still in memory.
+        }
       }
       syncError = message;
       return null;

@@ -61,10 +61,16 @@ class Api {
     return data is Map<String, dynamic> ? data : {};
   }
 
-  /// Some endpoints return a bare list in `data` (e.g. face templates).
+  /// Some endpoints return a bare list in `data` (e.g. face templates), while
+  /// paginated endpoints nest it under `data.data`. Anything else is invalid.
   static List<dynamic> _handleList(http.Response r) {
     final data = _decode(r);
-    return data is List ? data : const [];
+    if (data is List) return data;
+    if (data is Map<String, dynamic>) {
+      final nested = data['data'];
+      if (nested is List) return nested;
+    }
+    throw ApiError('Respons server tidak valid (${r.statusCode})', null, r.statusCode);
   }
 
   static Future<Map<String, dynamic>> post(String path, Map<String, dynamic> data) async =>
