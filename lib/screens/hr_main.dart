@@ -1017,7 +1017,8 @@ class More extends StatelessWidget {
             child: MenuRow(LucideIcons.logOut, 'Keluar', danger: true, onTap: () async {
               final ok = await confirm(context, title: 'Keluar dari HadirMetrik?', message: 'Kamu perlu masuk lagi untuk membuka dashboard HR.', action: 'Keluar', icon: LucideIcons.logOut, danger: true);
               if (!ok || !context.mounted) return;
-              app.logout();
+              await app.logout();
+              if (!context.mounted) return;
               resetTo(context, const Login());
             }),
           ),

@@ -29,6 +29,15 @@ class FaceEnrollment {
   bool get isRejected => status == 'rejected';
   bool get isFailed => status == 'failed';
 
+  String get label => switch (status) {
+        'pending' => 'Menunggu verifikasi',
+        'processing' => 'Sedang diproses',
+        'completed' => 'Terverifikasi',
+        'rejected' => 'Ditolak',
+        'failed' => 'Gagal',
+        _ => status,
+      };
+
   factory FaceEnrollment.fromJson(Map<String, dynamic> json) => FaceEnrollment(
         id: json['id'] ?? 0,
         status: json['status'] ?? 'pending',

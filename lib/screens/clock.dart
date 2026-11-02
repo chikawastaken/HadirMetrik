@@ -63,7 +63,7 @@ class ClockScreen extends StatelessWidget {
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('${app.pendingSyncCount} presensi di perangkat', style: T.title),
-                      Text('Dikirim otomatis saat koneksi tersedia.', style: T.caption),
+                      Text('Dikirim saat aplikasi dibuka atau lewat tombol Sinkronkan.', style: T.caption),
                     ]),
                   ),
                   Btn(

@@ -18,9 +18,13 @@ class SyncEventResult {
     this.clockRecordId,
   });
 
-  /// `synced` and `rejected` are final; the outbox can drop them.
-  /// `sync_failed` and `pending_review` stay queued for retry or review.
-  bool get isSettled => status == 'synced' || status == 'rejected';
+  /// `synced`, `rejected`, and `pending_review` are final for the outbox: the
+  /// server already holds the event. Only `sync_failed`/`pending_sync` retry.
+  bool get isSettled => status == 'synced' || status == 'rejected' || status == 'pending_review';
+
+  bool get isRejected => status == 'rejected';
+
+  bool get isPendingReview => status == 'pending_review';
 
   factory SyncEventResult.fromJson(Map<String, dynamic> json) => SyncEventResult(
         id: json['id'] ?? 0,
@@ -61,6 +65,8 @@ class SyncBatch {
   bool get isCompleted => status == 'completed';
   bool get isPartial => status == 'partial';
   bool get isFailed => status == 'failed';
+
+  Set<String> get eventIds => {for (final event in events) event.clientEventId};
 
   factory SyncBatch.fromJson(Map<String, dynamic> json) => SyncBatch(
         id: json['id'] ?? 0,

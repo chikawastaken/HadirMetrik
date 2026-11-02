@@ -101,5 +101,16 @@ void main() {
 
       expect(event.isSettled, isFalse);
     });
+
+    test('pending_review is settled because the server already holds it', () {
+      final event = SyncEventResult.fromJson({
+        'client_event_id': 'evt-4',
+        'type': 'clock_in',
+        'status': 'pending_review',
+      });
+
+      expect(event.isSettled, isTrue);
+      expect(event.isPendingReview, isTrue);
+    });
   });
 }
