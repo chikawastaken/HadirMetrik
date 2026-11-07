@@ -172,6 +172,8 @@ class _LoginState extends State<Login> {
       final mustChange = data['must_change_password'] == true || account?['must_change_password'] == true;
       await app.login(hr ? Role.hr : Role.karyawan);
       await app.fetchProfile(); // muat profil baru setelah login
+      if (!mounted) return;
+      toast(context, 'Login berhasil', aboveNav: true);
       if (mustChange) {
         Navigator.of(context).pushReplacement(fadeRoute(const ChangePassword()));
       } else {
