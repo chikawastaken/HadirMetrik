@@ -17,6 +17,7 @@ import 'screens/hr_work.dart';
 import 'screens/leave.dart';
 import 'screens/me.dart';
 import 'screens/tasks.dart';
+import 'session.dart';
 import 'state.dart';
 import 'theme.dart';
 
@@ -37,6 +38,7 @@ void main() async {
 }
 
 final navigatorKey = GlobalKey<NavigatorState>();
+final messengerKey = GlobalKey<ScaffoldMessengerState>();
 
 class HadirMetrik extends StatefulWidget {
   const HadirMetrik({super.key});
@@ -52,6 +54,23 @@ class _HadirMetrikState extends State<HadirMetrik> {
   void initState() {
     super.initState();
     _links = AppLinks().uriLinkStream.listen(_onLink, onError: (_) {});
+    Api.onSessionExpired = _sessionExpired;
+  }
+
+  /// The server rejected the stored token (expired or revoked). Drop it and
+  /// return to Login; keep the offline attendance queue for the next sign-in.
+  Future<void> _sessionExpired() async {
+    try {
+      await Session.clear();
+    } catch (_) {}
+    Api.token = null;
+    Api.accountKey = null;
+    await app.logout(clearOutbox: false);
+
+    navigatorKey.currentState?.pushAndRemoveUntil(fadeRoute(const Login()), (_) => false);
+    messengerKey.currentState?.showSnackBar(
+      const SnackBar(content: Text('Sesi berakhir. Silakan masuk lagi.')),
+    );
   }
 
   @override
@@ -79,6 +98,7 @@ class _HadirMetrikState extends State<HadirMetrik> {
   Widget build(BuildContext context) => MaterialApp(
         title: 'HadirMetrik',
         navigatorKey: navigatorKey,
+        scaffoldMessengerKey: messengerKey,
         debugShowCheckedModeBanner: false,
         theme: buildTheme(),
         // Phone-width canvas on tablets and desktop browsers; the design is 440 wide.
@@ -97,8 +117,84 @@ class _HadirMetrikState extends State<HadirMetrik> {
         ),
         // A cold-start invitation link goes straight to the password step: the
         // link itself is the credential, so no login is needed first.
-        home: DeepLink.hasPending ? const InvitationSetPassword() : const Splash(),
+        home: DeepLink.hasPending ? const InvitationSetPassword() : const SessionGate(),
       );
+}
+
+/// Decides the first screen from the stored session. A valid session enters
+/// the app immediately (so offline attendance still works); the server is
+/// asked to confirm the token in the background and a `401` returns to Login.
+class SessionGate extends StatefulWidget {
+  const SessionGate({super.key});
+
+  @override
+  State<SessionGate> createState() => _SessionGateState();
+}
+
+class _SessionGateState extends State<SessionGate> {
+  bool _booting = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _boot();
+  }
+
+  Future<void> _boot() async {
+    StoredSession? stored;
+    try {
+      stored = await Session.read();
+    } catch (_) {
+      stored = null;
+    }
+
+    if (resolveRestore(stored, DateTime.now()) != SessionRestore.ready) {
+      if (stored != null) {
+        try {
+          await Session.clear();
+        } catch (_) {}
+      }
+      if (mounted) setState(() => _booting = false);
+      return;
+    }
+
+    final session = stored!;
+    Api.token = session.token;
+    Api.accountKey = session.accountKey;
+    app.onboarded = session.onboarded;
+
+    try {
+      await app.login(session.isHr ? Role.hr : Role.karyawan);
+    } catch (_) {
+      if (mounted) setState(() => _booting = false);
+      return;
+    }
+    unawaited(app.fetchProfile());
+
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (session.mustChangePassword) {
+        Navigator.of(context).pushReplacement(fadeRoute(const ChangePassword()));
+      } else {
+        afterAuth(context);
+      }
+    });
+
+    unawaited(_refreshIdentity());
+  }
+
+  /// Confirms the token and refreshes the cached identity without blocking the
+  /// shell. Network failures are ignored; `401` is handled globally.
+  Future<void> _refreshIdentity() async {
+    try {
+      final me = await Api.me();
+      await Session.refreshUser(me);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) => Splash(busy: _booting);
 }
 
 /// Signed-in shell: one nested navigator per tab so each tab keeps its own

@@ -2,16 +2,26 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hadirmetrik/api.dart';
+import 'package:hadirmetrik/session.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+
+import 'support/memory_session_store.dart';
 
 http.Response _json(Object body, [int status = 200]) =>
     http.Response(jsonEncode(body), status, headers: {'content-type': 'application/json'});
 
 void main() {
+  setUp(() {
+    Session.store = MemorySessionStore();
+    Api.onSessionExpired = null;
+  });
+
   tearDown(() {
     Api.client = http.Client();
     Api.token = null;
+    Api.onSessionExpired = null;
+    Session.store = SecureSessionStore();
   });
 
   test('getFaceTemplates accepts the list envelope', () async {
@@ -190,5 +200,60 @@ void main() {
     await Api.login('12345678', 'secret');
 
     expect(Api.accountKey, 'u:42');
+  });
+
+  test('login persists the token, expiry, and user for the next launch', () async {
+    final store = Session.store as MemorySessionStore;
+    Api.client = MockClient((request) async => _json({
+          'success': true,
+          'data': {
+            'token': 't',
+            'expires_at': '2026-11-27T10:00:00+00:00',
+            'user': {'id': 42, 'email': 'karyawan@example.com', 'role': 'employee'},
+          },
+        }));
+
+    await Api.login('karyawan@example.com', 'secret');
+
+    final saved = await store.read();
+    expect(saved, isNotNull);
+    expect(saved!.token, 't');
+    expect(saved.expiresAt, DateTime.utc(2026, 11, 27, 10));
+    expect(saved.accountKey, 'u:42');
+    expect(saved.user['role'], 'employee');
+  });
+
+  test('logout clears the stored session even when the request fails', () async {
+    final store = Session.store as MemorySessionStore;
+    await store.write(const StoredSession(
+      token: 't',
+      user: {'role': 'employee'},
+    ));
+    Api.token = 't';
+    Api.client = MockClient((request) async => _json({
+          'success': false,
+          'message': 'Gagal.',
+        }, 500));
+
+    await expectLater(Api.logout(), throwsA(isA<ApiError>()));
+
+    expect(await store.read(), isNull);
+    expect(Api.token, isNull);
+  });
+
+  test('a 401 with an active token notifies the app exactly once', () async {
+    var calls = 0;
+    Api.onSessionExpired = () async => calls++;
+    Api.token = 't';
+    Api.client = MockClient((request) async => _json({
+          'success': false,
+          'message': 'Unauthorized.',
+        }, 401));
+
+    await expectLater(Api.getSchedule(), throwsA(isA<ApiError>()));
+    await expectLater(Api.getSchedule(), throwsA(isA<ApiError>()));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(calls, 1);
   });
 }

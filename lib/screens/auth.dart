@@ -7,6 +7,7 @@ import '../api.dart';
 import '../data.dart';
 import '../deeplink.dart';
 import '../main.dart';
+import '../session.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../visuals.dart';
@@ -37,7 +38,11 @@ void afterAuth(BuildContext c) {
 // ---------------------------------------------------------------- A01 splash
 
 class Splash extends StatelessWidget {
-  const Splash({super.key});
+  const Splash({super.key, this.busy = false});
+
+  /// Disables the call to action while a stored session is being read.
+  final bool busy;
+
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: C.primary,
@@ -74,7 +79,7 @@ class Splash extends StatelessWidget {
                   shape: const StadiumBorder(),
                   child: InkWell(
                     customBorder: const StadiumBorder(),
-                    onTap: () => Navigator.of(context).pushReplacement(fadeRoute(const Login())),
+                    onTap: busy ? null : () => Navigator.of(context).pushReplacement(fadeRoute(const Login())),
                     child: SizedBox(
                       height: 72,
                       child: Row(children: [
@@ -504,6 +509,9 @@ class _InvitationAcceptState extends State<InvitationAccept> {
   /// keep the token, and let them sign in with the right account.
   Future<void> _switchAccount() async {
     DeepLink.remember(_token!);
+    try {
+      await Session.clear();
+    } catch (_) {}
     Api.token = null;
     await app.logout();
     if (!mounted) return;
@@ -608,6 +616,7 @@ class _OnboardingState extends State<Onboarding> {
                   : Btn('Lanjut ke Registrasi Wajah', onTap: granted[_Perm.kamera] == true && granted[_Perm.lokasi] == true
                       ? () {
                           app.onboarded = true;
+                          unawaited(Session.markOnboarded());
                           Navigator.of(context).pushReplacement(fadeRoute(const FaceTips(first: true)));
                         }
                       : null),
