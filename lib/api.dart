@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
+
+import 'session.dart';
 
 const baseUrl = String.fromEnvironment(
   'API_URL',
@@ -29,10 +32,24 @@ class ApiError implements Exception {
 }
 
 class Api {
-  static String? token;
+  static String? _token;
+
+  static String? get token => _token;
+
+  /// Clears the "session expired" latch whenever the token changes.
+  static set token(String? value) {
+    _token = value;
+    _sessionExpiryNotified = false;
+  }
 
   /// Identifier of the signed-in account, used to scope the offline outbox.
   static String? accountKey;
+
+  /// Called once when a protected request is rejected with `401`. The app
+  /// clears the stored session and returns to Login.
+  static Future<void> Function()? onSessionExpired;
+
+  static bool _sessionExpiryNotified = false;
 
   /// Overridable for tests.
   static http.Client client = http.Client();
@@ -53,6 +70,13 @@ class Api {
     if (r.statusCode >= 200 && r.statusCode < 300 && body['success'] == true) {
       return body['data'];
     }
+
+    if (r.statusCode == 401 && _token != null && !_sessionExpiryNotified) {
+      _sessionExpiryNotified = true;
+      final callback = onSessionExpired;
+      if (callback != null) unawaited(callback());
+    }
+
     throw ApiError(body['message'] ?? 'Terjadi kesalahan', body['errors'], r.statusCode);
   }
 
@@ -93,6 +117,8 @@ class Api {
           .delete(Uri.parse('$baseUrl$path'), headers: _headers)
           .timeout(const Duration(seconds: 15)));
 
+  static Future<Map<String, dynamic>> me() async => get('/me');
+
   static Future<Map<String, dynamic>> getProfile() async => get('/me/profile');
   static Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> data) async => patch('/me/profile', data);
 
@@ -115,6 +141,7 @@ class Api {
     token = data['token'] as String?;
     // No identifier was typed here; scope the outbox to the created user.
     _rememberAccount(data['user'], 'invitation-$invitation');
+    await _persistSession(data);
     return data;
   }
 
@@ -133,7 +160,18 @@ class Api {
     });
     token = data['token'] as String?;
     _rememberAccount(data['user'], identifier);
+    await _persistSession(data);
     return data;
+  }
+
+  /// Saves the token and minimal user payload so the next launch can restore
+  /// the session without asking for credentials again.
+  static Future<void> _persistSession(Map<String, dynamic> data) async {
+    try {
+      await Session.saveFromAuth(data, accountKey: accountKey);
+    } catch (_) {
+      // A platform storage failure must not block an otherwise valid login.
+    }
   }
 
   /// Stable key for the offline outbox. Prefer the user id so the same person
@@ -159,6 +197,11 @@ class Api {
     } finally {
       token = null;
       accountKey = null;
+      try {
+        await Session.clear();
+      } catch (_) {
+        // Nothing else to do: the in-memory token is already gone.
+      }
     }
   }
 

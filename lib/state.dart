@@ -453,7 +453,7 @@ class AppState extends ChangeNotifier {
     unawaited(flushOutbox());
   }
 
-  Future<void> logout() async {
+  Future<void> logout({bool clearOutbox = true}) async {
     _session++;
     clockIn = null;
     clockOut = null;
@@ -472,9 +472,10 @@ class AppState extends ChangeNotifier {
     clockBusy = false;
     syncing = false;
     // Queued attendance belongs to the signed-in account; never let the next
-    // account sync it. Await so a fast re-login cannot race the clear.
+    // account sync it. On session expiry we keep it so the same employee can
+    // flush after signing in again. Await so a fast re-login cannot race the clear.
     try {
-      await outbox.clear();
+      if (clearOutbox) await outbox.clear();
     } finally {
       notifyListeners();
     }
