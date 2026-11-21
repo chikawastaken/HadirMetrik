@@ -247,4 +247,73 @@ class Api {
       });
 
   static Future<Map<String, dynamic>> getSyncBatch(int id) => get('/sync/attendance/$id');
+
+  // ------------------------------------------------------------ Phase 5
+
+  static Future<Map<String, dynamic>> taskList({String? status, String? search}) async {
+    final params = <String, String>{};
+    if (status != null && status.isNotEmpty) params['status'] = status;
+    if (search != null && search.isNotEmpty) params['search'] = search;
+    final query = params.isEmpty ? '' : '?${Uri(queryParameters: params).query}';
+    return get('/tasks$query');
+  }
+
+  static Future<Map<String, dynamic>> taskDetail(int id) async => get('/tasks/$id');
+
+  static Future<Map<String, dynamic>> taskStart(int id) async => post('/tasks/$id/start', {});
+
+  static Future<Map<String, dynamic>> taskProgress(int id, {required int progressPercent, List<String>? checklist}) async {
+    final body = <String, dynamic>{'progress_percent': progressPercent};
+    if (checklist != null) body['checklist'] = checklist;
+    return patch('/tasks/$id/progress', body);
+  }
+
+  static Future<Map<String, dynamic>> taskSubmit(
+    int id, {
+    String? note,
+    List<String>? checklist,
+    List<int>? attachmentIds,
+    List<http.MultipartFile>? evidence,
+  }) async {
+    final body = <String, dynamic>{};
+    if (note != null) body['note'] = note;
+    if (checklist != null) body['checklist'] = checklist;
+    if (attachmentIds != null) body['attachment_ids'] = attachmentIds;
+    if (evidence != null && evidence.isNotEmpty) {
+      // Multipart request needed for file uploads.
+      final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/tasks/$id/submissions'));
+      request.headers.addAll(_headers.map((k, v) => MapEntry(k, v)));
+      request.headers['Content-Type'] = 'multipart/form-data';
+      request.fields.addAll(body.map((k, v) => MapEntry(k, jsonEncode(v))));
+      for (final f in evidence) {
+        request.files.add(f);
+      }
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      return _handle(response);
+    }
+    return post('/tasks/$id/submissions', body);
+  }
+
+  static Future<Map<String, dynamic>> taskComment(int id, String body) async => post('/tasks/$id/comments', {'body': body});
+
+  static Future<Map<String, dynamic>> taskAttachment(int id, {required String kind, required String originalName, required String mimeType, required int sizeBytes, http.MultipartFile? file}) async {
+    final body = <String, dynamic>{
+      'kind': kind,
+      'original_name': originalName,
+      'mime_type': mimeType,
+      'size_bytes': sizeBytes,
+    };
+    if (file != null) {
+      final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/tasks/$id/attachments'));
+      request.headers.addAll(_headers.map((k, v) => MapEntry(k, v)));
+      request.headers['Content-Type'] = 'multipart/form-data';
+      request.fields.addAll(body.map((k, v) => MapEntry(k, v.toString())));
+      request.files.add(file);
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      return _handle(response);
+    }
+    return post('/tasks/$id/attachments', body);
+  }
 }

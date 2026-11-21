@@ -169,6 +169,7 @@ class Comment {
 
 class TaskItem {
   TaskItem({
+    this.id,
     required this.title,
     required this.desc,
     required this.prio,
@@ -190,6 +191,7 @@ class TaskItem {
   })  : checklist = checklist ?? [],
         comments = comments ?? [];
 
+  final int? id;
   final String title, desc, deadline, from, fromRole, created, remaining, division;
   final Prio prio;
   TaskStatus status;
@@ -200,6 +202,88 @@ class TaskItem {
   final List<Comment> comments;
   final List<String> assignees;
   String? revisionNote;
+
+  /// Maps a backend task detail response to a Flutter TaskItem.
+  factory TaskItem.fromApi(Map<String, dynamic> json) {
+    final prioStr = (json['priority'] as String? ?? 'medium').toLowerCase();
+    final prio = switch (prioStr) {
+      'high' => Prio.tinggi,
+      'low' => Prio.rendah,
+      _ => Prio.sedang,
+    };
+    // Determine status from the assignment status (first assignment).
+    final assignments = (json['assignments'] as List? ?? []).cast<Map<String, dynamic>>();
+    final assignmentStatus = assignments.isNotEmpty
+        ? (assignments.first['status'] as String? ?? 'assigned')
+        : (json['status'] as String? ?? 'assigned');
+    final status = switch (assignmentStatus) {
+      'submitted' || 'under_review' => TaskStatus.review,
+      'revision_required' => TaskStatus.revisi,
+      'completed' || 'closed' || 'cancelled' => TaskStatus.selesai,
+      _ => TaskStatus.proses,
+    };
+    final progress = ((json['assignments'] as List? ?? []).isNotEmpty
+        ? (assignments.first['progress_percent'] as int? ?? 0)
+        : 0) / 100.0;
+    final checklist = (assignments.isNotEmpty
+        ? (assignments.first['checklist'] as List? ?? []).cast<String>()
+        : (json['checklist_template'] as List? ?? []).cast<String>()).map((s) => CheckItem(s)).toList();
+    final comments = (json['comments'] as List? ?? []).cast<Map<String, dynamic>>().map((c) {
+      final name = c['author_name'] as String? ?? 'HR';
+      final time = c['created_at'] as String? ?? '';
+      return Comment(name, c['body'] as String? ?? '', time);
+    }).toList();
+    final attachments = (json['attachments'] as List? ?? []).cast<Map<String, dynamic>>().map((a) {
+      final name = a['original_name'] as String? ?? 'file';
+      final size = a['size_bytes'] as int? ?? 0;
+      final sizeStr = size > 1024 * 1024
+          ? '${(size / (1024 * 1024)).toStringAsFixed(1)} MB'
+          : '${(size / 1024).toStringAsFixed(0)} KB';
+      return (name, sizeStr);
+    }).toList();
+    final assignees = assignments.map((a) => a['employee_name'] as String? ?? '').where((s) => s.isNotEmpty).toList();
+    final dueAt = json['due_at'] as String?;
+    final deadline = dueAt != null ? _formatDeadline(dueAt) : '';
+    final created = json['created_at'] as String?;
+    final createdStr = created != null ? _formatDate(created) : 'Sen, 5 Okt 2026';
+    final now = DateTime.now();
+    final dueDate = dueAt != null ? DateTime.tryParse(dueAt) : null;
+    final overdue = dueDate != null && dueDate.isBefore(now) && status != TaskStatus.selesai;
+    return TaskItem(
+      id: json['id'] as int?,
+      title: json['title'] as String? ?? '',
+      desc: json['description'] as String? ?? '',
+      prio: prio,
+      status: status,
+      deadline: deadline,
+      from: json['created_by'] as String? ?? 'HR',
+      overdue: overdue,
+      progress: progress,
+      attachments: attachments,
+      checklist: checklist,
+      comments: comments,
+      created: createdStr,
+      assignees: assignees.isEmpty ? ['Rina Pratiwi'] : assignees,
+      division: '',
+    );
+  }
+
+  static String _formatDeadline(String iso) {
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return iso;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    final m = months[dt.month - 1];
+    return '${dt.day} $m, ${dt.hour.toString().padLeft(2, '0')}.${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  static String _formatDate(String iso) {
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return iso;
+    const days = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    final dayName = days[(dt.weekday - 1) % 7];
+    return '$dayName, ${dt.day} ${months[dt.month - 1]} ${dt.year}';
+  }
 }
 
 List<TaskItem> seedTasks() => [
