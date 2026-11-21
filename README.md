@@ -37,6 +37,38 @@ flutter run --dart-define=API_URL=http://192.168.18.124:8000/api/v1
 > Cleartext HTTP hanya diizinkan di manifest debug. Build release tetap
 > memblokir HTTP biasa dan harus memakai HTTPS.
 
+## Deep link undangan
+
+Email undangan berisi halaman perantara HTTP (`/invitations/<token>`) yang
+menawarkan tombol **Buka Aplikasi**. Tombol itu mengirim intent
+`hadirmetrik://invitations/<token>` ke aplikasi.
+
+Aplikasi **harus dipasang ulang** setelah `android/app/src/main/AndroidManifest.xml`
+berubah, karena Android hanya mengetahui skema dari manifest yang terpasang:
+
+```bash
+ANDROID_SERIAL=192.168.18.126:37215 tool/dev_run.sh -d 192.168.18.126:37215
+```
+
+Uji tanpa email:
+
+```bash
+adb -s 192.168.18.126:37215 shell am start -W \
+  -a android.intent.action.VIEW \
+  -d "hadirmetrik://invitations/<token>" \
+  com.hadirmetrik.hadirmetrik
+```
+
+Jika aplikasi tidak terbuka dan browser malah membuka Play Store dengan pesan
+**“Item tidak ditemukan”**, berarti build yang terpasang belum mendaftarkan
+skema tersebut. Pasang ulang APK debug, lalu coba lagi.
+
+Saat link dibuka:
+
+- aplikasi tertutup → langsung ke layar **Buat Kata Sandi**;
+- aplikasi sudah berjalan dan belum login → layar **Buat Kata Sandi**;
+- aplikasi sudah login → layar konfirmasi undangan.
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.
