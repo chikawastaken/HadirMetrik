@@ -453,20 +453,6 @@ class _TaskReviewState extends State<TaskReview> {
                       ),
                   ],
                 ),
-                gap12,
-                AppCard(
-                  color: C.insightSubtle,
-                  child: Row(children: [
-                    const IconTile(LucideIcons.sparkles, tone: Tone.insight, size: 36, round: true),
-                    gap12,
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Cek kualitas bukti [DL]', style: T.title.copyWith(color: C.insightText)),
-                        Text('3 dari 4 foto jelas. Foto rak 3 buram, label stok tidak terbaca.', style: T.small.copyWith(color: C.insightText)),
-                      ]),
-                    ),
-                  ]),
-                ),
               ],
               if (t.checklist.isNotEmpty) ...[
                 Overline('CHECKLIST · ${t.checklist.where((c) => c.done).length} DARI ${t.checklist.length}'),

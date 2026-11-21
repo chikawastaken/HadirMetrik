@@ -92,38 +92,59 @@ class Home extends StatelessWidget {
                   AppCard(
                     child: Column(children: [
                       Row(children: [
-                        for (final (v, l, tone) in [('3', 'Hadir', Tone.success), ('2', 'Terlambat', Tone.warning), ('0', 'Absen', Tone.danger), ('3', 'Cuti', Tone.info)])
+                        for (final (i, (v, l, tone)) in [('3', 'Hadir', Tone.success), ('2', 'Terlambat', Tone.warning), ('0', 'Absen', Tone.danger), ('3', 'Cuti', Tone.info)].indexed) ...[
+                          if (i > 0)
+                            Container(
+                              width: 1,
+                              height: 48,
+                              color: C.border,
+                              margin: const EdgeInsets.symmetric(horizontal: 4),
+                            ),
                           Expanded(
-                            child: Column(children: [
-                              Text(v, style: T.numL.copyWith(color: tone.fg)),
-                              Text(l, style: T.caption),
-                            ]),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                                Text(v, style: T.numL.copyWith(color: tone.fg)),
+                                const SizedBox(height: 2),
+                                Text(l, maxLines: 1, softWrap: false, style: T.caption.copyWith(color: C.text2)),
+                              ]),
+                            ),
                           ),
+                        ],
                       ]),
-                      gap12,
+                      const SizedBox(height: 12),
                       const Divider(),
                       Row(children: [
-                        Expanded(child: TextButton.icon(onPressed: () => push(context, const History()), icon: const Icon(LucideIcons.calendarDays, size: 16), label: const Text('Riwayat'))),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            child: TextButton.icon(
+                              onPressed: () => push(context, const History()),
+                              icon: const Icon(LucideIcons.calendarDays, size: 16),
+                              label: const Text('Riwayat'),
+                            ),
+                          ),
+                        ),
                         Container(width: 1, height: 24, color: C.border),
-                        Expanded(child: TextButton.icon(onPressed: () => push(context, const Stats()), icon: const Icon(LucideIcons.chartLine, size: 16), label: const Text('Statistik · Skor 92'))),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            child: TextButton.icon(
+                              onPressed: () => push(context, const Stats()),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                              ),
+                              icon: const Icon(LucideIcons.chartLine, size: 16),
+                              label: const Text(
+                                'Statistik',
+                                maxLines: 1,
+                                softWrap: false,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        ),
                       ]),
-                    ]),
-                  ),
-                  gap16,
-                  AppCard(
-                    color: C.insightSubtle,
-                    border: C.insight.withValues(alpha: .2),
-                    onTap: () => push(context, const Stats()),
-                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const IconTile(LucideIcons.sparkles, tone: Tone.insight),
-                      gap12,
-                      Expanded(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('Insight untukmu [DL]', style: T.title.copyWith(color: C.insightText)),
-                          gap4,
-                          Text('Dua keterlambatanmu bulan ini terjadi saat hujan. Saat langit mendung, coba berangkat 15 menit lebih awal.', style: T.caption.copyWith(color: C.insightText)),
-                        ]),
-                      ),
                     ]),
                   ),
                 ]),
@@ -195,7 +216,7 @@ class _TaskRow extends StatelessWidget {
 }
 
 class _PayPreview extends StatelessWidget {
-  _PayPreview();
+  const _PayPreview();
   @override
   Widget build(BuildContext context) => AppCard(
         color: C.primary,
@@ -225,8 +246,8 @@ class _PayPreview extends StatelessWidget {
 // ---------------------------------------------------------------- hero + clock button
 
 class _Hero extends StatelessWidget {
-  // Not const: rebuilt by Home's ListenableBuilder.
-  _Hero();
+  // Keep the call site non-const so Home's ListenableBuilder rebuilds it.
+  const _Hero();
 
   @override
   Widget build(BuildContext context) {
@@ -294,7 +315,7 @@ class _LiveClock extends StatelessWidget {
 }
 
 class _ClockButton extends StatefulWidget {
-  _ClockButton();
+  const _ClockButton();
   @override
   State<_ClockButton> createState() => _ClockButtonState();
 }
@@ -391,6 +412,7 @@ void demoSheet(BuildContext context) => showSheet(
           ),
           for (final s in Sim.values)
             InkWell(
+              borderRadius: BorderRadius.circular(12),
               onTap: () => app.setSim(s),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),

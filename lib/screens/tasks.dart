@@ -72,6 +72,7 @@ class _TasksState extends State<Tasks> {
             Text('Urutkan', style: T.title),
             for (final (i, l) in const ['Tenggat terdekat', 'Prioritas tertinggi', 'Terbaru'].indexed)
               InkWell(
+                borderRadius: BorderRadius.circular(12),
                 onTap: () => set(() => s = i),
                 child: Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Row(children: [Expanded(child: Text(l, style: T.bodyM)), RadioDot(s == i)])),
               ),
@@ -188,11 +189,23 @@ class TaskCard extends StatelessWidget {
         Row(children: [
           Pill(t.prio.label, icon: LucideIcons.flag, tone: t.prio.tone),
           if (t.status != TaskStatus.proses) ...[gap8, Pill(t.status.label, icon: t.status.icon, tone: t.status.tone)],
-          const Spacer(),
-          Icon(LucideIcons.clock, size: 13, color: late ? C.danger : C.text3),
-          gap4,
-          Flexible(
-            child: Text(late && !hr ? t.remaining : t.deadline, maxLines: 1, overflow: TextOverflow.ellipsis, style: T.small.copyWith(color: late ? C.dangerText : C.text3, fontWeight: late ? FontWeight.w700 : FontWeight.w500)),
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Icon(LucideIcons.clock, size: 13, color: late ? C.danger : C.text3),
+                gap4,
+                Flexible(
+                  child: Text(
+                    late && !hr ? t.remaining : t.deadline,
+                    maxLines: 1,
+                    textAlign: TextAlign.right,
+                    overflow: TextOverflow.ellipsis,
+                    style: T.small.copyWith(color: late ? C.dangerText : C.text3, fontWeight: late ? FontWeight.w700 : FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
           ),
         ]),
         gap12,
@@ -351,6 +364,7 @@ class _TaskDetailState extends State<TaskDetail> {
             child: Divided([
               for (final (name, size) in t.attachments)
                 InkWell(
+                  borderRadius: BorderRadius.circular(12),
                   onTap: () => toast(context, 'Mengunduh $name', icon: LucideIcons.download),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 10),
@@ -369,19 +383,20 @@ class _TaskDetailState extends State<TaskDetail> {
           const Overline('Checklist'),
           AppCard(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-            child: Column(children: [
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               CardTitle('$done dari ${t.checklist.length} selesai', trailing: '${(done / t.checklist.length * 100).round()}%'),
               Bar(done / t.checklist.length, color: C.accent),
               gap8,
               for (final c in t.checklist)
                 InkWell(
+                  borderRadius: BorderRadius.circular(12),
                   onTap: editable ? () => setState(() => c.done = !c.done) : null,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     child: Row(children: [
                       CheckBox2(c.done),
                       gap12,
-                      Expanded(child: Text(c.label, style: T.bodyM.copyWith(color: c.done ? C.text3 : C.text, decoration: c.done ? TextDecoration.lineThrough : null))),
+                      Expanded(child: Text(c.label, style: T.bodyM.copyWith(color: c.done ? C.text3 : C.text))),
                     ]),
                   ),
                 ),

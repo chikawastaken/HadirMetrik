@@ -282,6 +282,7 @@ class _PayState extends State<Pay> {
           CardTitle(title, trailing: '${minus ? '-' : '+'}${_money(total)}'),
           for (final l in lines)
             InkWell(
+              borderRadius: BorderRadius.circular(12),
               onTap: l.label == 'Keterlambatan' && l.amount > 0 && i == 0 ? lateSheet : null,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
@@ -384,6 +385,7 @@ class _PayState extends State<Pay> {
                 child: Divided([
                   for (final s in slips.skip(1))
                     InkWell(
+                      borderRadius: BorderRadius.circular(12),
                       onTap: () => push(context, Slip(s), root: true),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -813,25 +815,6 @@ class _StatsState extends State<Stats> {
                 ]),
               ),
           ],
-        ),
-        const Overline('INSIGHT & SARAN [DL]'),
-        AppCard(
-          color: C.insightSubtle,
-          child: Column(children: [
-            for (final (icon, t) in const [
-              (LucideIcons.cloudRain, 'Kedua keterlambatanmu terjadi saat hujan. Berangkat 15 menit lebih awal saat mendung.'),
-              (LucideIcons.calendarDays, 'Senin adalah hari dengan jam kerja terpanjang. Coba bagi tugas berat ke hari lain.'),
-              (LucideIcons.target, 'Satu kali lagi tepat waktu 5 hari berturut-turut untuk lencana Sebulan sempurna.'),
-            ])
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Icon(icon, size: 18, color: C.insight),
-                  gap12,
-                  Expanded(child: Text(t, style: T.body.copyWith(color: C.insightText))),
-                ]),
-              ),
-          ]),
         ),
       ],
     );

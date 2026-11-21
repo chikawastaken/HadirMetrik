@@ -24,6 +24,7 @@ Widget _stat(String value, String label, {Color? color}) => Expanded(
 
 /// Label + bar + value row used by the HR breakdown cards.
 Widget barRow(String label, double v, String value, {Color color = C.primary, String? sub, VoidCallback? onTap}) => InkWell(
+      borderRadius: BorderRadius.circular(12),
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 7),
@@ -310,23 +311,6 @@ class _HrDashboardState extends State<HrDashboard> {
                         ),
                     ]),
                   ),
-                  gap12,
-                  AppCard(
-                    color: C.insightSubtle,
-                    onTap: () => push(context, const Insights()),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Row(children: [
-                        const IconTile(LucideIcons.sparkles, tone: Tone.insight, size: 36, round: true),
-                        gap12,
-                        Expanded(child: Text('Prediksi minggu depan [DL]', style: T.h3.copyWith(color: C.insightText))),
-                        const Icon(LucideIcons.chevronRight, size: 18, color: C.insightText),
-                      ]),
-                      gap12,
-                      Text('Keterlambatan diprediksi naik 18% pada Senin, 12 Okt karena prakiraan hujan pagi. Divisi Penjualan paling berisiko, 6 orang.', style: T.body.copyWith(color: C.insightText)),
-                      gap12,
-                      Btn('Kirim pengingat ke tim', kind: BtnKind.white, icon: LucideIcons.send, height: 44, onTap: () => toast(context, 'Pengingat berangkat lebih awal dikirim ke 6 orang di Penjualan.', aboveNav: true)),
-                    ]),
-                  ),
                 ]),
               ),
             ],
@@ -432,6 +416,7 @@ class _LateTrendState extends State<LateTrend> {
           child: Divided([
             for (final (i, (n, m)) in const [('Maya Anggraini', 142), ('Fajar Nugroho', 96), ('Agus Setiawan', 71), ('Budi Santoso', 54), ('Lina Marlina', 38)].indexed)
               InkWell(
+                borderRadius: BorderRadius.circular(12),
                 onTap: () => push(context, EmployeeDetail(personByName(n)), root: true),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -526,6 +511,7 @@ class _WorkHoursState extends State<WorkHours> {
                   ? const [('Hendra Kusuma', '11,2 j/hari', 'Lembur 26 jam'), ('Budi Santoso', '10,4 j/hari', 'Lembur 21 jam'), ('Dewi Lestari', '10,1 j/hari', 'Lembur 18 jam')]
                   : const [('Fajar Nugroho', '6,1 j/hari', '2 absen, 4 terlambat'), ('Agus Setiawan', '6,8 j/hari', 'Sering pulang 16.00'), ('Putra Wijaya', '6,9 j/hari', 'Cuti 3 hari'), ('Maya Anggraini', '7,0 j/hari', '5 terlambat')])
                 InkWell(
+                  borderRadius: BorderRadius.circular(12),
                   onTap: () => push(context, EmployeeDetail(personByName(n)), root: true),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
@@ -587,194 +573,6 @@ class _WorkHoursState extends State<WorkHours> {
                     Expanded(child: Btn('Lihat Detail', height: 44, onTap: () => push(context, EmployeeDetail(personByName(b.$1)), root: true))),
                   ]),
                 ]),
-              ),
-            ),
-        ],
-      );
-}
-
-// ---------------------------------------------------------------- C11 insight
-
-class Insights extends StatefulWidget {
-  const Insights({super.key});
-  @override
-  State<Insights> createState() => _InsightsState();
-}
-
-class _InsightsState extends State<Insights> {
-  final anomalies = [
-    (LucideIcons.mapPinOff, 'Clock-in berulang dari titik yang sama', 'Fajar Nugroho · 4 kali dalam 2 minggu, koordinat persis sama', Tone.danger),
-    (LucideIcons.users, 'Clock-in beruntun dalam 30 detik', 'Agus Setiawan dan Lina Marlina · perangkat berdekatan', Tone.warning),
-    (LucideIcons.scanFace, 'Skor wajah turun tajam', 'Lina Marlina · dari 96% ke 81% dalam 5 hari', Tone.warning),
-    (LucideIcons.clock, 'Pola terlambat setiap Senin', 'Penjualan · 6 orang, 4 minggu berturut-turut', Tone.insight),
-  ];
-  final done = <int>{};
-
-  void ignore((IconData, String, String, Tone) a) {
-    final i = anomalies.indexOf(a);
-    setState(() => anomalies.remove(a));
-    toast(context, 'Anomali diabaikan', action: 'Batalkan', onAction: () => setState(() => anomalies.insert(i, a)), aboveNav: true);
-  }
-
-  void detail((IconData, String, String, Tone) a) => showSheet(
-        context,
-        (ctx) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SheetHead('Detail anomali', subtitle: a.$2),
-          Flexible(
-            child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(20, 0, 20, 20), children: [
-              const MapBox(height: 150, pins: [MapPin(Alignment(.25, -.15), C.danger, size: 14), MapPin(Alignment(.28, -.1), C.danger), MapPin(Alignment(-.3, .2), C.accent)]),
-              gap12,
-              Text(a.$3, style: T.body),
-              const Overline('CLOCK-IN TERKAIT', padding: EdgeInsets.fromLTRB(0, 16, 0, 8)),
-              for (final (d, t, p) in const [('Rab, 7 Okt', '08.47', '-7.7829, 110.3671'), ('Jum, 2 Okt', '08.52', '-7.7829, 110.3671'), ('Sel, 29 Sep', '08.44', '-7.7829, 110.3671'), ('Sen, 28 Sep', '08.58', '-7.7829, 110.3671')])
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(children: [
-                    const Icon(LucideIcons.mapPin, size: 16, color: C.danger),
-                    gap8,
-                    Expanded(child: Text('$d · $t', style: T.bodyM)),
-                    Text(p, style: T.small),
-                  ]),
-                ),
-              gap16,
-              Row(children: [
-                Expanded(
-                  child: Btn('Abaikan', kind: BtnKind.light, icon: LucideIcons.eyeOff, onTap: () {
-                    Navigator.pop(ctx);
-                    ignore(a);
-                  }),
-                ),
-                gap12,
-                Expanded(
-                  flex: 2,
-                  child: Btn('Minta Verifikasi', icon: LucideIcons.scanFace, onTap: () {
-                    Navigator.pop(ctx);
-                    toast(context, 'Permintaan verifikasi ulang dikirim.', aboveNav: true);
-                  }),
-                ),
-              ]),
-            ]),
-          ),
-        ]),
-      );
-
-  @override
-  Widget build(BuildContext context) => Screen(
-        inShell: true,
-        header: const PageHeader('Insight & Prediksi', subtitle: 'Diperbarui 06.00 hari ini', back: true),
-        children: [
-          AppCard(
-            color: C.primary,
-            child: Row(children: [
-              const IconTile(LucideIcons.brainCircuit, tone: Tone.sage, size: 48, round: true),
-              gap12,
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Model HadirMetrik v3.2 [DL]', style: T.title.copyWith(color: Colors.white)),
-                  Text('Dilatih dari 14 bulan data absensi', style: T.small.copyWith(color: Colors.white70)),
-                ]),
-              ),
-              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text('91,4%', style: T.numM.copyWith(color: Colors.white)),
-                Text('akurasi', style: T.small.copyWith(color: Colors.white70)),
-              ]),
-            ]),
-          ),
-          const Overline('PREDIKSI KEHADIRAN MINGGU DEPAN'),
-          AppCard(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Senin diprediksi paling rendah, 84%', style: T.title),
-              Text('Prakiraan hujan pagi dan efek akhir pekan panjang', style: T.small),
-              gap12,
-              const Bars([84, 89, 90, 91, 87], ['Sen 12', 'Sel 13', 'Rab 14', 'Kam 15', 'Jum 16'], highlight: 0, valueLabels: ['84%', '89%', '90%', '91%', '87%'], height: 100),
-            ]),
-          ),
-          const Overline('KARYAWAN BERISIKO'),
-          AppCard(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: Divided([
-              for (final (n, r, why) in const [('Fajar Nugroho', .82, 'Absen tanpa keterangan dan lokasi palsu'), ('Agus Setiawan', .74, 'Perangkat di-root, pola pulang awal'), ('Maya Anggraini', .63, 'Terlambat 5 kali bulan ini'), ('Lina Marlina', .47, 'Skor wajah turun')])
-                InkWell(
-                  onTap: () => push(context, EmployeeDetail(personByName(n)), root: true),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(children: [
-                      Avatar(personByName(n).initials, size: 36),
-                      gap12,
-                      Expanded(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(n, style: T.title),
-                          Text(why, style: T.small),
-                          gap4,
-                          Bar(r, color: r >= .7 ? C.danger : (r >= .5 ? C.warning : C.primary), height: 4),
-                        ]),
-                      ),
-                      gap12,
-                      Text(r.toStringAsFixed(2).replaceAll('.', ','), style: T.numS.copyWith(color: r >= .7 ? C.dangerText : C.text)),
-                    ]),
-                  ),
-                ),
-            ]),
-          ),
-          Overline('ANOMALI TERDETEKSI · ${anomalies.length}'),
-          for (final a in anomalies)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: AppCard(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    IconTile(a.$1, tone: a.$4, size: 36, round: true),
-                    gap12,
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(a.$2, style: T.title), gap4, Text(a.$3, style: T.caption)])),
-                  ]),
-                  gap12,
-                  Row(children: [
-                    Expanded(
-                      child: Btn('Abaikan', kind: BtnKind.light, height: 44, onTap: () => ignore(a)),
-                    ),
-                    gap12,
-                    Expanded(child: Btn('Lihat Detail', height: 44, onTap: () => detail(a))),
-                  ]),
-                ]),
-              ),
-            ),
-          Row(children: [
-            const Expanded(child: Overline('REKOMENDASI TINDAKAN')),
-            Padding(padding: const EdgeInsets.only(top: 10), child: Text('${done.length}/4 selesai', style: T.small)),
-          ]),
-          for (final (i, (icon, tone, prio, t, s, act)) in const [
-            (LucideIcons.bellRing, Tone.insight, 'Prioritas sedang', 'Kirim pengingat berangkat lebih awal', 'Penjualan · setiap Senin 06.30', 'Jadwalkan'),
-            (LucideIcons.messageCircle, Tone.danger, 'Prioritas tinggi', 'Jadwalkan pembicaraan dengan Fajar Nugroho', 'Minggu ini · skor risiko 0,82', 'Buat jadwal'),
-            (LucideIcons.smartphone, Tone.danger, 'Prioritas tinggi', 'Reset perangkat Agus Setiawan', 'Perangkat di-root · minta registrasi ulang', 'Reset'),
-            (LucideIcons.scanFace, Tone.warning, 'Prioritas rendah', 'Minta Lina Marlina daftar ulang wajah', 'Skor wajah 81% · di tempat terang', 'Kirim'),
-          ].indexed)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 200),
-                opacity: done.contains(i) ? .6 : 1,
-                child: AppCard(
-                  padding: const EdgeInsets.all(14),
-                  radius: 20,
-                  child: Row(children: [
-                    IconTile(done.contains(i) ? LucideIcons.check : icon, tone: done.contains(i) ? Tone.success : tone, size: 40),
-                    gap12,
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(done.contains(i) ? 'Selesai' : prio, style: T.small.copyWith(color: done.contains(i) ? C.accent : tone.fg, fontWeight: FontWeight.w600)),
-                        Text(t, style: T.title.copyWith(decoration: done.contains(i) ? TextDecoration.lineThrough : null)),
-                        Text(s, style: T.small),
-                      ]),
-                    ),
-                    gap8,
-                    done.contains(i)
-                        ? TextButton(onPressed: () => setState(() => done.remove(i)), child: Text('Urungkan', style: T.small.copyWith(color: C.primary, fontWeight: FontWeight.w600)))
-                        : Btn(act, kind: BtnKind.soft, height: 36, expand: false, onTap: () {
-                            setState(() => done.add(i));
-                            toast(context, 'Tindakan "$t" ditandai selesai.', aboveNav: true);
-                          }),
-                  ]),
-                ),
               ),
             ),
         ],
@@ -901,6 +699,7 @@ class _ReportsState extends State<Reports> {
                   child: Divided([
                     for (final (n, s) in const [('Rekap_Sep2026_Semua.xlsx', '1 Okt · Sari Wulandari'), ('Keterlambatan_Agu2026_Penjualan.pdf', '2 Sep · Sari Wulandari'), ('Penggajian_Agu2026.pdf', '26 Agu · Sari Wulandari')])
                       InkWell(
+                        borderRadius: BorderRadius.circular(12),
                         onTap: () => toast(context, '$n diunduh.', icon: LucideIcons.download),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 10),
@@ -997,7 +796,6 @@ class More extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             child: Column(children: [
               MenuRow(LucideIcons.mapPinned, 'Pantau Lokasi', subtitle: 'Peta clock-in dan lokasi palsu', tone: Tone.danger, onTap: () => push(context, const LiveMonitor(), root: true)),
-              MenuRow(LucideIcons.sparkles, 'Insight AI', subtitle: 'Prediksi dan anomali [DL]', tone: Tone.insight, onTap: () => push(context, const Insights())),
               MenuRow(LucideIcons.trendingUp, 'Tren Keterlambatan', onTap: () => push(context, const LateTrend())),
               MenuRow(LucideIcons.timer, 'Distribusi Jam Kerja', onTap: () => push(context, const WorkHours())),
             ]),
@@ -1355,6 +1153,7 @@ class _PayrollState extends State<Payroll> {
         child: Column(children: [
           for (final (i, (icon, l)) in const [(LucideIcons.bell, 'Notifikasi aplikasi'), (LucideIcons.mail, 'Email kantor'), (LucideIcons.messageCircle, 'WhatsApp')].indexed)
             InkWell(
+              borderRadius: BorderRadius.circular(12),
               onTap: done ? null : () => setState(() => channels.contains(i) ? channels.remove(i) : channels.add(i)),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 10),
