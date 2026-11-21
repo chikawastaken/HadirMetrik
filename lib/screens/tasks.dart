@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../api.dart';
 import '../data.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -271,17 +274,79 @@ class _TaskDetailState extends State<TaskDetail> {
   bool get editable => t.status == TaskStatus.proses || t.status == TaskStatus.revisi;
 
   @override
+  void initState() {
+    super.initState();
+    _loadDetail();
+  }
+
+  Future<void> _loadDetail() async {
+    if (t.id == null) return;
+    try {
+      final res = await Api.taskDetail(t.id!);
+      if (!mounted) return;
+      final taskJson = res['task'] as Map<String, dynamic>?;
+      if (taskJson != null) {
+        final updated = TaskItem.fromApi(taskJson);
+        setState(() {
+          t
+            ..status = updated.status
+            ..progress = updated.progress
+            ..checklist.clear()
+            ..checklist.addAll(updated.checklist)
+            ..comments.clear()
+            ..comments.addAll(updated.comments)
+            ..revisionNote = updated.revisionNote;
+        });
+        app.touch();
+      }
+    } catch (_) {}
+  }
+
+  @override
   void dispose() {
     comment.dispose();
     super.dispose();
   }
 
-  void send() {
+  Future<void> send() async {
     final v = comment.text.trim();
     if (v.isEmpty) return;
-    setState(() => t.comments.add(Comment('Kamu', v, 'Rab ${hm(app.now)}')));
     comment.clear();
     FocusScope.of(context).unfocus();
+
+    if (t.id != null) {
+      try {
+        final res = await Api.taskComment(t.id!, v);
+        final commentData = res['comment'] as Map<String, dynamic>?;
+        final author = commentData?['author_name'] as String? ?? 'Kamu';
+        final time = commentData?['created_at'] != null ? hm(DateTime.tryParse(commentData!['created_at']) ?? app.now) : hm(app.now);
+        setState(() => t.comments.add(Comment(author, v, time)));
+        app.touch();
+        return;
+      } catch (e) {
+        if (!mounted) return;
+        toast(context, 'Gagal mengirim komentar.', icon: LucideIcons.alertCircle);
+      }
+    }
+
+    setState(() => t.comments.add(Comment('Kamu', v, 'Rab ${hm(app.now)}')));
+    app.touch();
+  }
+
+  Future<void> _syncProgress() async {
+    if (t.id == null) return;
+    try {
+      final payloadChecklist = t.checklist.indexed.map((e) => {
+        'key': e.$2.key ?? 'c${e.$1 + 1}',
+        'label': e.$2.label,
+        'done': e.$2.done,
+      }).toList();
+      await Api.taskProgress(
+        t.id!,
+        progressPercent: (t.progress * 100).round(),
+        checklist: payloadChecklist,
+      );
+    } catch (_) {}
   }
 
   Future<void> submit() async {
@@ -294,6 +359,36 @@ class _TaskDetailState extends State<TaskDetail> {
     );
     if (!ok || !mounted) return;
     setState(() => busy = true);
+
+    if (t.id != null) {
+      try {
+        final payloadChecklist = t.checklist.indexed.map((e) => {
+          'key': e.$2.key ?? 'c${e.$1 + 1}',
+          'label': e.$2.label,
+          'done': e.$2.done,
+        }).toList();
+        await Api.taskSubmit(
+          t.id!,
+          checklist: payloadChecklist,
+        );
+        if (!mounted) return;
+        setState(() {
+          busy = false;
+          t.status = TaskStatus.review;
+        });
+        app.touch();
+        unawaited(app.fetchTasks());
+        toast(context, again ? 'Revisi terkirim. HR akan meninjau ulang.' : 'Tugas dikirim untuk review.');
+        return;
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => busy = false);
+        final msg = e is ApiError ? e.message : 'Gagal mengirim tugas untuk review.';
+        toast(context, msg, icon: LucideIcons.alertCircle);
+        return;
+      }
+    }
+
     await Future.delayed(const Duration(milliseconds: 700));
     if (!mounted) return;
     setState(() {
@@ -375,7 +470,12 @@ class _TaskDetailState extends State<TaskDetail> {
               gap8,
               for (final c in t.checklist)
                 InkWell(
-                  onTap: editable ? () => setState(() => c.done = !c.done) : null,
+                  onTap: editable
+                      ? () {
+                          setState(() => c.done = !c.done);
+                          _syncProgress();
+                        }
+                      : null,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     child: Row(children: [
@@ -396,7 +496,15 @@ class _TaskDetailState extends State<TaskDetail> {
               data: SliderTheme.of(context).copyWith(overlayShape: SliderComponentShape.noOverlay),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Slider(value: t.progress, divisions: 20, onChanged: editable ? (v) => setState(() => t.progress = v) : null, onChangeEnd: (_) => app.touch()),
+                child: Slider(
+                  value: t.progress,
+                  divisions: 20,
+                  onChanged: editable ? (v) => setState(() => t.progress = v) : null,
+                  onChangeEnd: (_) {
+                    app.touch();
+                    _syncProgress();
+                  },
+                ),
               ),
             ),
             if (editable) const Field(label: 'Catatan progres', hint: 'Contoh: rak 1 dan 2 sudah dihitung, sisa rak 3 sampai 5', maxLines: 2),
