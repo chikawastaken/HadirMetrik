@@ -157,9 +157,10 @@ enum TaskStatus {
 }
 
 class CheckItem {
-  CheckItem(this.label, [this.done = false]);
+  CheckItem(this.label, [this.done = false, this.key]);
   final String label;
   bool done;
+  final String? key;
 }
 
 class Comment {
@@ -188,6 +189,8 @@ class TaskItem {
     this.revisionNote,
     this.assignees = const ['Rina Pratiwi'],
     this.division = 'Operasional',
+    this.latestSubmissionId,
+    this.requiresPhotoProof = false,
   })  : checklist = checklist ?? [],
         comments = comments ?? [];
 
@@ -202,38 +205,79 @@ class TaskItem {
   final List<Comment> comments;
   final List<String> assignees;
   String? revisionNote;
+  final int? latestSubmissionId;
+  final bool requiresPhotoProof;
 
-  /// Maps a backend task detail response to a Flutter TaskItem.
-  factory TaskItem.fromApi(Map<String, dynamic> json) {
-    final prioStr = (json['priority'] as String? ?? 'medium').toLowerCase();
+  /// Maps a backend task response to a Flutter TaskItem.
+  /// Handles both flat task objects and `{ assignment, task }` pairs.
+  factory TaskItem.fromApi(Map<String, dynamic> rawJson) {
+    final Map<String, dynamic> taskJson;
+    final Map<String, dynamic>? assignmentJson;
+
+    if (rawJson.containsKey('task') && rawJson['task'] is Map) {
+      taskJson = (rawJson['task'] as Map).cast<String, dynamic>();
+      assignmentJson = (rawJson['assignment'] as Map?)?.cast<String, dynamic>();
+    } else {
+      taskJson = rawJson;
+      assignmentJson = null;
+    }
+
+    final prioStr = (taskJson['priority'] as String? ?? 'medium').toLowerCase();
     final prio = switch (prioStr) {
       'high' => Prio.tinggi,
       'low' => Prio.rendah,
       _ => Prio.sedang,
     };
-    // Determine status from the assignment status (first assignment).
-    final assignments = (json['assignments'] as List? ?? []).cast<Map<String, dynamic>>();
-    final assignmentStatus = assignments.isNotEmpty
-        ? (assignments.first['status'] as String? ?? 'assigned')
-        : (json['status'] as String? ?? 'assigned');
+
+    final rawAssignments = taskJson['assignments'] as List? ?? [];
+    final assignments = rawAssignments.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
+
+    final assignmentStatus = assignmentJson != null
+        ? (assignmentJson['status'] as String? ?? 'assigned')
+        : (assignments.isNotEmpty
+            ? (assignments.first['status'] as String? ?? 'assigned')
+            : (taskJson['status'] as String? ?? 'assigned'));
+
     final status = switch (assignmentStatus) {
       'submitted' || 'under_review' => TaskStatus.review,
       'revision_required' => TaskStatus.revisi,
       'completed' || 'closed' || 'cancelled' => TaskStatus.selesai,
       _ => TaskStatus.proses,
     };
-    final progress = ((json['assignments'] as List? ?? []).isNotEmpty
-        ? (assignments.first['progress_percent'] as int? ?? 0)
-        : 0) / 100.0;
-    final checklist = (assignments.isNotEmpty
-        ? (assignments.first['checklist'] as List? ?? []).cast<String>()
-        : (json['checklist_template'] as List? ?? []).cast<String>()).map((s) => CheckItem(s)).toList();
-    final comments = (json['comments'] as List? ?? []).cast<Map<String, dynamic>>().map((c) {
+
+    final rawProgress = assignmentJson != null
+        ? (assignmentJson['progress_percent'] as int? ?? 0)
+        : (assignments.isNotEmpty ? (assignments.first['progress_percent'] as int? ?? 0) : 0);
+    final progress = rawProgress / 100.0;
+
+    final List<CheckItem> checklist = [];
+    final dynamic rawChecklist = assignmentJson?['checklist'] ??
+        (assignments.isNotEmpty ? assignments.first['checklist'] : null) ??
+        taskJson['checklist_template'];
+
+    if (rawChecklist is List) {
+      for (var i = 0; i < rawChecklist.length; i++) {
+        final item = rawChecklist[i];
+        if (item is Map) {
+          final label = item['label'] as String? ?? '';
+          final done = item['done'] == true;
+          final key = item['key'] as String? ?? 'c$i';
+          checklist.add(CheckItem(label, done, key));
+        } else if (item is String) {
+          checklist.add(CheckItem(item, false, 'c$i'));
+        }
+      }
+    }
+
+    final rawComments = taskJson['comments'] as List? ?? [];
+    final comments = rawComments.whereType<Map>().map((c) {
       final name = c['author_name'] as String? ?? 'HR';
       final time = c['created_at'] as String? ?? '';
       return Comment(name, c['body'] as String? ?? '', time);
     }).toList();
-    final attachments = (json['attachments'] as List? ?? []).cast<Map<String, dynamic>>().map((a) {
+
+    final rawAttachments = taskJson['attachments'] as List? ?? [];
+    final attachments = rawAttachments.whereType<Map>().map((a) {
       final name = a['original_name'] as String? ?? 'file';
       final size = a['size_bytes'] as int? ?? 0;
       final sizeStr = size > 1024 * 1024
@@ -241,22 +285,35 @@ class TaskItem {
           : '${(size / 1024).toStringAsFixed(0)} KB';
       return (name, sizeStr);
     }).toList();
-    final assignees = assignments.map((a) => a['employee_name'] as String? ?? '').where((s) => s.isNotEmpty).toList();
-    final dueAt = json['due_at'] as String?;
+
+    final rawSubmissions = taskJson['submissions'] as List? ?? [];
+    final submissions = rawSubmissions.whereType<Map>().map((s) => s.cast<String, dynamic>()).toList();
+    final latestSubmission = submissions.isNotEmpty ? submissions.first : null;
+    final latestSubmissionId = latestSubmission?['id'] as int?;
+    final revisionNote = latestSubmission?['review_note'] as String?;
+
+    final assignees = assignments
+        .map((a) => a['employee_name'] as String? ?? '')
+        .where((s) => s.isNotEmpty)
+        .toList();
+
+    final dueAt = taskJson['due_at'] as String?;
     final deadline = dueAt != null ? _formatDeadline(dueAt) : '';
-    final created = json['created_at'] as String?;
+    final created = taskJson['created_at'] as String?;
     final createdStr = created != null ? _formatDate(created) : 'Sen, 5 Okt 2026';
     final now = DateTime.now();
     final dueDate = dueAt != null ? DateTime.tryParse(dueAt) : null;
     final overdue = dueDate != null && dueDate.isBefore(now) && status != TaskStatus.selesai;
+    final requiresPhotoProof = taskJson['requires_photo_proof'] == true;
+
     return TaskItem(
-      id: json['id'] as int?,
-      title: json['title'] as String? ?? '',
-      desc: json['description'] as String? ?? '',
+      id: taskJson['id'] as int?,
+      title: taskJson['title'] as String? ?? '',
+      desc: taskJson['description'] as String? ?? '',
       prio: prio,
       status: status,
       deadline: deadline,
-      from: json['created_by'] as String? ?? 'HR',
+      from: taskJson['created_by']?.toString() ?? 'HR',
       overdue: overdue,
       progress: progress,
       attachments: attachments,
@@ -265,6 +322,9 @@ class TaskItem {
       created: createdStr,
       assignees: assignees.isEmpty ? ['Rina Pratiwi'] : assignees,
       division: '',
+      revisionNote: revisionNote,
+      latestSubmissionId: latestSubmissionId,
+      requiresPhotoProof: requiresPhotoProof,
     );
   }
 

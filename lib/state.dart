@@ -121,23 +121,33 @@ class AppState extends ChangeNotifier {
       final res = await Api.taskList();
       final data = res['tasks'] as List? ?? [];
       tasks.clear();
-      hrTasks.clear();
       for (final item in data) {
         if (item is Map<String, dynamic>) {
-          final task = TaskItem.fromApi(item);
-          tasks.add(task);
-          // HR tasks: include tasks created by this user (Sari Wulandari).
-          if (task.from == 'Sari Wulandari' || task.assignees.contains('Rina Pratiwi')) {
-            // Add to hrTasks if not already present.
-            if (!hrTasks.any((t) => t.id != null && t.id == task.id)) {
-              hrTasks.add(task);
-            }
-          }
+          tasks.add(TaskItem.fromApi(item));
         }
+      }
+      if (role == Role.hr) {
+        unawaited(fetchHrTasks());
       }
       notifyListeners();
     } catch (_) {
       // Keep existing (seeded) tasks on failure; app stays offline-capable.
+    }
+  }
+
+  Future<void> fetchHrTasks({String? status}) async {
+    try {
+      final res = await Api.hrTaskList(status: status);
+      final data = res['tasks'] as List? ?? [];
+      hrTasks.clear();
+      for (final item in data) {
+        if (item is Map<String, dynamic>) {
+          hrTasks.add(TaskItem.fromApi(item));
+        }
+      }
+      notifyListeners();
+    } catch (_) {
+      // Keep existing tasks on failure; app stays offline-capable.
     }
   }
 
