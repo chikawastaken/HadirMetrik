@@ -92,8 +92,8 @@ class AppState extends ChangeNotifier {
   /// Minutes relative to the 08.00 shift start; negative = early.
   int lateMinutes(DateTime t) => t.difference(DateTime(t.year, t.month, t.day, 8)).inMinutes;
 
-  final tasks = seedTasks();
-  late final hrTasks = seedHrTasks(tasks);
+  final List<TaskItem> tasks = [];
+  final List<TaskItem> hrTasks = [];
   final notifs = seedNotifs();
   final approvals = seedApprovals();
   late final leaves = [approvals[1], ...seedLeaves()];
@@ -114,6 +114,31 @@ class AppState extends ChangeNotifier {
       profile = EmployeeProfile.fromJson(res);
       notifyListeners();
     } catch (_) {}
+  }
+
+  Future<void> fetchTasks() async {
+    try {
+      final res = await Api.taskList();
+      final data = res['tasks'] as List? ?? [];
+      tasks.clear();
+      hrTasks.clear();
+      for (final item in data) {
+        if (item is Map<String, dynamic>) {
+          final task = TaskItem.fromApi(item);
+          tasks.add(task);
+          // HR tasks: include tasks created by this user (Sari Wulandari).
+          if (task.from == 'Sari Wulandari' || task.assignees.contains('Rina Pratiwi')) {
+            // Add to hrTasks if not already present.
+            if (!hrTasks.any((t) => t.id != null && t.id == task.id)) {
+              hrTasks.add(task);
+            }
+          }
+        }
+      }
+      notifyListeners();
+    } catch (_) {
+      // Keep existing (seeded) tasks on failure; app stays offline-capable.
+    }
   }
 
   /// Loads template versions from the API. Failures stay non-fatal so the

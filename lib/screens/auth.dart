@@ -179,6 +179,7 @@ class _LoginState extends State<Login> {
       final mustChange = data['must_change_password'] == true || account?['must_change_password'] == true;
       await app.login(hr ? Role.hr : Role.karyawan);
       await app.fetchProfile(); // muat profil baru setelah login
+      unawaited(app.fetchTasks()); // muat tugas dari backend
       if (!mounted) return;
       toast(context, 'Login berhasil', aboveNav: true);
       if (mustChange) {
@@ -471,6 +472,7 @@ class _InvitationSetPasswordState extends State<InvitationSetPassword> {
       if (!mounted) return;
       final role = (data['user'] as Map?)?['role'];
       await app.login(role == 'hr' || role == 'admin' ? Role.hr : Role.karyawan);
+      unawaited(app.fetchTasks());
       if (!mounted) return;
       Navigator.of(context).pushReplacement(fadeRoute(const InvitationAccept()));
     } on ApiError catch (e) {
