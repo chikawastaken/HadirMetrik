@@ -17,6 +17,7 @@ import 'screens/hr_work.dart';
 import 'screens/leave.dart';
 import 'screens/me.dart';
 import 'screens/tasks.dart';
+import 'server_config.dart';
 import 'session.dart';
 import 'state.dart';
 import 'theme.dart';
@@ -31,6 +32,8 @@ void main() async {
   } catch (_) {
     // Deep links are unavailable on this platform; start normally.
   }
+  // Load the saved API address (if any) before the first request is made.
+  await ServerConfig.load();
   // Restore queued attendance and today's clock state before the first frame.
   // Syncing waits until login supplies a token.
   await app.restoreOfflineState();
