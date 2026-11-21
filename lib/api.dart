@@ -1,14 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 
+import 'server_config.dart';
 import 'session.dart';
 
-const baseUrl = String.fromEnvironment(
-  'API_URL',
-  defaultValue: kIsWeb ? 'http://localhost:8000/api/v1' : 'http://10.0.2.2:8000/api/v1',
-);
+/// Resolved at runtime by [ServerConfig] so the address can change without a
+/// rebuild (see the server dialog on the Login screen in debug builds).
+String get baseUrl => ServerConfig.baseUrl;
 
 class ApiError implements Exception {
   ApiError(this.message, [this.errors, this.statusCode]);

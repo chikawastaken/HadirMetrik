@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -7,6 +8,7 @@ import '../api.dart';
 import '../data.dart';
 import '../deeplink.dart';
 import '../main.dart';
+import '../server_config.dart';
 import '../session.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -235,10 +237,102 @@ class _LoginState extends State<Login> {
             gap8,
             Text('Perangkat ini akan terikat ke akunmu', style: T.caption),
           ]),
+          // Debug builds only: change the API host without reinstalling.
+          if (kDebugMode) ...[
+            gap12,
+            Center(
+              child: TextButton(
+                onPressed: _editServer,
+                child: Text('Server: ${ServerConfig.baseUrl}', style: T.caption),
+              ),
+            ),
+          ],
         ],
       );
 
   void _forgot(BuildContext context) => toast(context, 'Fitur reset kata sandi belum tersedia. Hubungi HR.', icon: LucideIcons.mail);
+
+  Future<void> _editServer() async {
+    await showDialog<bool>(context: context, builder: (_) => const _ServerDialog());
+    if (mounted) setState(() {});
+  }
+}
+
+/// Lets a debug build point at whatever address the backend is reachable on
+/// that day (campus Wi-Fi, tethering, USB `adb reverse`, etc.).
+class _ServerDialog extends StatefulWidget {
+  const _ServerDialog();
+
+  @override
+  State<_ServerDialog> createState() => _ServerDialogState();
+}
+
+class _ServerDialogState extends State<_ServerDialog> {
+  late final TextEditingController _controller = TextEditingController(text: ServerConfig.baseUrl);
+  bool _checking = false;
+  String? _status;
+  bool _ok = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _check() async {
+    setState(() {
+      _checking = true;
+      _status = 'Menguji…';
+      _ok = false;
+    });
+    final ok = await ServerConfig.reachable(_controller.text);
+    if (!mounted) return;
+    setState(() {
+      _checking = false;
+      _ok = ok;
+      _status = ok ? 'Server merespons.' : 'Tidak dapat terhubung.';
+    });
+  }
+
+  Future<void> _save() async {
+    await ServerConfig.save(_controller.text);
+    if (!mounted) return;
+    toast(context, 'Server: ${ServerConfig.baseUrl}', icon: LucideIcons.server);
+    Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Server API'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Alamat backend untuk build debug. Bisa diubah tanpa rebuild.', style: T.caption),
+            gap12,
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              decoration: const InputDecoration(hintText: 'http://192.168.1.10:8000/api/v1'),
+            ),
+            if (ServerConfig.locked) ...[
+              gap8,
+              Text('Dikunci oleh --dart-define=API_URL; perubahan hanya berlaku sesi ini.', style: T.caption),
+            ],
+            if (_status != null) ...[
+              gap8,
+              Text(_status!, style: T.caption.copyWith(color: _ok ? C.primary : C.danger)),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: _checking ? null : _check, child: Text(_checking ? 'Menguji…' : 'Tes')),
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Batal')),
+          TextButton(onPressed: _save, child: const Text('Simpan')),
+        ],
+      );
 }
 
 /// A03 change password — required before any other feature when the account
