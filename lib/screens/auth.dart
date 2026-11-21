@@ -189,10 +189,10 @@ class _LoginState extends State<Login> {
       }
     } on ApiError catch (e) {
       if (!mounted) return;
-      toast(context, e.message, icon: LucideIcons.triangleAlert);
+      toast(context, e.message, icon: LucideIcons.triangleAlert, isError: true);
     } catch (_) {
       if (!mounted) return;
-      toast(context, 'Tidak bisa terhubung ke server', icon: LucideIcons.triangleAlert);
+      toast(context, 'Tidak bisa terhubung ke server', icon: LucideIcons.triangleAlert, isError: true);
     } finally {
       if (mounted) setState(() => busy = false);
     }

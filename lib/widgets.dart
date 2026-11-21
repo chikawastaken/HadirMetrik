@@ -192,19 +192,27 @@ class InfoRow extends StatelessWidget {
   final Color? valueColor;
   final String? sub;
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 9),
-        child: Row(children: [
-          if (icon != null) ...[Icon(icon, size: 18, color: C.text3), gap12],
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(label, style: T.body),
-              if (sub != null) Text(sub!, style: T.small),
-            ]),
-          ),
-          gap8,
-          Flexible(child: Text(value, textAlign: TextAlign.right, style: T.numS.copyWith(color: valueColor ?? C.text))),
-        ]),
+  Widget build(BuildContext context) => SizedBox(
+        width: double.infinity,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          child: Row(children: [
+            if (icon != null) ...[Icon(icon, size: 18, color: C.text3), gap12],
+            Flexible(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(label, style: T.body),
+                if (sub != null) Text(sub!, style: T.small),
+              ]),
+            ),
+            gap8,
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Text(value, textAlign: TextAlign.right, style: T.numS.copyWith(color: valueColor ?? C.text)),
+              ),
+            ),
+          ]),
+        ),
       );
 }
 
@@ -627,6 +635,7 @@ class ToggleTile extends StatelessWidget {
   final ValueChanged<bool> onChanged;
   @override
   Widget build(BuildContext context) => InkWell(
+        borderRadius: BorderRadius.circular(12),
         onTap: () => onChanged(!value),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 10),
@@ -770,18 +779,18 @@ Future<DateTimeRange?> pickRange(BuildContext context, {DateTimeRange? initial})
       ),
     );
 
-void toast(BuildContext context, String msg, {String? action, VoidCallback? onAction, bool aboveNav = false, IconData icon = LucideIcons.circleCheck}) {
+void toast(BuildContext context, String msg, {String? action, VoidCallback? onAction, bool aboveNav = false, IconData icon = LucideIcons.circleCheck, bool isError = false}) {
   final m = ScaffoldMessenger.of(context);
   m.clearSnackBars();
   m.showSnackBar(SnackBar(
     persist: false,
     behavior: SnackBarBehavior.floating,
-    backgroundColor: C.toast,
+    backgroundColor: isError ? C.danger : C.toast,
     margin: EdgeInsets.fromLTRB(16, 0, 16, aboveNav ? 96 : 16),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     duration: const Duration(seconds: 3),
     content: Row(children: [
-      Icon(icon, size: 18, color: C.mid),
+      Icon(icon, size: 18, color: isError ? Colors.white : C.mid),
       gap12,
       Expanded(child: Text(msg, style: T.bodyM.copyWith(color: Colors.white))),
     ]),
@@ -946,7 +955,7 @@ class Divided extends StatelessWidget {
   const Divided(this.children, {super.key});
   final List<Widget> children;
   @override
-  Widget build(BuildContext context) => Column(children: [
+  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         for (var i = 0; i < children.length; i++) ...[if (i > 0) const Divider(), children[i]],
       ]);
 }
