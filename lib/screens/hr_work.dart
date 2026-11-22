@@ -119,7 +119,10 @@ class _CreateTaskState extends State<CreateTask> {
   @override
   void initState() {
     super.initState();
-    if (widget.assignee == null) picked.add(rina.name);
+    if (widget.assignee == null) {
+      final list = app.hrEmployees.isNotEmpty ? app.hrEmployees : employees;
+      if (list.isNotEmpty) picked.add(list.first.name);
+    }
   }
 
   @override
@@ -130,7 +133,9 @@ class _CreateTaskState extends State<CreateTask> {
     super.dispose();
   }
 
-  List<String> get assignees => mode == 1 ? [for (final p in employees.where((p) => p.division == divisions[div])) p.name] : picked.toList();
+  List<Person> get people => app.hrEmployees.isNotEmpty ? app.hrEmployees : employees;
+
+  List<String> get assignees => mode == 1 ? [for (final p in people.where((p) => p.division == divisions[div])) p.name] : picked.toList();
   String get deadline => '${tglPendek(DateTime(2026, 10, due))}, 17.00';
 
   Future<void> create() async {
@@ -139,6 +144,21 @@ class _CreateTaskState extends State<CreateTask> {
     setState(() => busy = true);
 
     final who = assignees;
+    final byName = <String, int>{
+      for (final p in app.hrEmployees)
+        if (p.dbId != null) p.name: p.dbId!,
+    };
+    final ids = <int>[];
+    for (final n in who) {
+      final id = byName[n];
+      if (id != null && !ids.contains(id)) ids.add(id);
+    }
+    if (ids.isEmpty) {
+      setState(() => busy = false);
+      toast(context, 'Data karyawan belum tersedia dari server. Muat ulang daftar karyawan lalu coba lagi.', icon: LucideIcons.alertCircle);
+      return;
+    }
+
     final prioStr = switch (Prio.values[prio]) {
       Prio.tinggi => 'high',
       Prio.rendah => 'low',
@@ -155,7 +175,7 @@ class _CreateTaskState extends State<CreateTask> {
         title: title.text.trim(),
         description: desc.text.trim().isEmpty ? null : desc.text.trim(),
         priority: prioStr,
-        assigneeIds: const [1],
+        assigneeIds: ids,
         requiresPhotoProof: proof,
         checklistTemplate: template,
         dueAt: DateTime(2026, 10, due, 17).toIso8601String(),
@@ -164,7 +184,17 @@ class _CreateTaskState extends State<CreateTask> {
       if (taskJson != null) {
         createdItem = TaskItem.fromApi(taskJson);
       }
-    } catch (_) {}
+    } on ApiError catch (e) {
+      if (!mounted) return;
+      setState(() => busy = false);
+      toast(context, e.message, icon: LucideIcons.alertCircle);
+      return;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => busy = false);
+      toast(context, 'Tidak dapat membuat tugas. Periksa koneksi lalu coba lagi.', icon: LucideIcons.alertCircle);
+      return;
+    }
 
     if (!mounted) return;
     final t = createdItem ??
@@ -196,7 +226,7 @@ class _CreateTaskState extends State<CreateTask> {
 
   @override
   Widget build(BuildContext context) {
-    final names = [for (final p in employees) p.name];
+    final names = [for (final p in people) p.name];
     return Screen(
       header: const TopBar('Buat Tugas'),
       bottom: BottomActions([
@@ -356,6 +386,7 @@ class _TaskReviewState extends State<TaskReview> {
                       if (!mounted) return;
                       final msg = e is ApiError ? e.message : 'Gagal meminta revisi.';
                       toast(context, msg, icon: LucideIcons.alertCircle);
+                      return;
                     }
                   }
                   t
@@ -415,6 +446,7 @@ class _TaskReviewState extends State<TaskReview> {
                       if (!mounted) return;
                       final msg = e is ApiError ? e.message : 'Gagal menyetujui tugas.';
                       toast(context, msg, icon: LucideIcons.alertCircle);
+                      return;
                     }
                   }
                   t
