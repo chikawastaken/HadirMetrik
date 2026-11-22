@@ -623,28 +623,55 @@ class _TaskReviewState extends State<TaskReview> {
 
 // ---------------------------------------------------------------- C09 persetujuan
 
-/// Applies an HR decision with an undo toast.
-void decide(BuildContext context, LeaveReq r, bool ok, {String? reason, bool aboveNav = false}) {
-  final prev = (r.status, r.note, [...r.steps]);
-  r
-    ..status = ok ? LeaveStatus.disetujui : LeaveStatus.ditolak
-    ..note = ok ? 'Disetujui Sari Wulandari, $_today' : 'Ditolak Sari Wulandari: $reason';
-  if (r.steps.length == 3) {
-    r.steps[1] = ('Atasan · Dimas Ardiansyah', 'Disetujui 6 Okt', Tone.success);
-    r.steps[2] = ('HR · Sari Wulandari', ok ? 'Disetujui $_today' : 'Ditolak $_today', ok ? Tone.success : Tone.danger);
+/// Applies an HR decision through the approval API.
+Future<bool> decide(BuildContext context, LeaveReq r, bool ok, {String? reason, bool aboveNav = false}) async {
+  if (r.id != null) {
+    try {
+      final res = await Api.hrApprovalDecision(
+        r.id!,
+        decision: ok ? 'approved' : 'rejected',
+        note: ok ? null : reason,
+      );
+      final json = res['request'];
+      if (json is Map<String, dynamic>) {
+        final updated = LeaveReq.fromApi(json);
+        r
+          ..status = updated.status
+          ..note = updated.note;
+        r.steps
+          ..clear()
+          ..addAll(updated.steps);
+      }
+    } on ApiError catch (e) {
+      if (!context.mounted) return false;
+      toast(context, e.message, icon: LucideIcons.alertCircle);
+      return false;
+    } catch (_) {
+      if (!context.mounted) return false;
+      toast(context, 'Tidak dapat menyimpan keputusan. Periksa koneksi.', icon: LucideIcons.alertCircle);
+      return false;
+    }
+  } else {
+    r
+      ..status = ok ? LeaveStatus.disetujui : LeaveStatus.ditolak
+      ..note = ok ? 'Disetujui Sari Wulandari, $_today' : 'Ditolak Sari Wulandari: $reason';
+    if (r.steps.length == 3) {
+      r.steps[1] = ('Atasan · Dimas Ardiansyah', 'Disetujui 6 Okt', Tone.success);
+      r.steps[2] = ('HR · Sari Wulandari', ok ? 'Disetujui $_today' : 'Ditolak $_today', ok ? Tone.success : Tone.danger);
+    }
   }
+
   if (r.who == rina) {
     app.notifs.insert(0, Notif(NCat.pengajuan, ok ? '${r.type.label} disetujui' : '${r.type.label} ditolak', ok ? '${r.range} disetujui Sari Wulandari.' : 'Sari Wulandari: $reason', hm(app.now), 'HARI INI'));
   }
   app.touch();
-  toast(context, '${r.type.label} ${r.who.name} ${ok ? 'disetujui' : 'ditolak'}', aboveNav: aboveNav, action: 'Batalkan', onAction: () {
-    r
-      ..status = prev.$1
-      ..note = prev.$2;
-    if (r.steps.length == 3) r.steps.setAll(0, prev.$3);
-    if (r.who == rina) app.notifs.removeAt(0);
-    app.touch();
-  });
+  if (!context.mounted) return false;
+  if (r.status == LeaveStatus.menunggu) {
+    toast(context, 'Langkah atasan disetujui. Menunggu persetujuan HR.', aboveNav: aboveNav);
+  } else {
+    toast(context, '${r.type.label} ${r.who.name} ${ok ? 'disetujui' : 'ditolak'}', aboveNav: aboveNav);
+  }
+  return r.status != LeaveStatus.menunggu;
 }
 
 /// Reject sheet; returns the reason, or null when cancelled.
@@ -686,13 +713,14 @@ Future<String?> rejectReason(BuildContext context, LeaveReq r) {
   );
 }
 
-Future<void> approveOne(BuildContext context, LeaveReq r, {bool aboveNav = false}) async => decide(context, r, true, aboveNav: aboveNav);
+Future<void> approveOne(BuildContext context, LeaveReq r, {bool aboveNav = false}) async {
+  await decide(context, r, true, aboveNav: aboveNav);
+}
 
 Future<bool> rejectOne(BuildContext context, LeaveReq r, {bool aboveNav = false}) async {
   final why = await rejectReason(context, r);
   if (why == null || !context.mounted) return false;
-  decide(context, r, false, reason: why, aboveNav: aboveNav);
-  return true;
+  return decide(context, r, false, reason: why, aboveNav: aboveNav);
 }
 
 class ApprovalCard extends StatelessWidget {
@@ -748,25 +776,30 @@ class _ApprovalsState extends State<Approvals> {
   bool selecting = false;
   final picked = <LeaveReq>{};
 
+  @override
+  void initState() {
+    super.initState();
+    unawaited(app.fetchApprovals());
+  }
+
   Future<void> bulk(bool ok) async {
     final n = picked.length;
     if (ok) {
       if (!await confirm(context, title: 'Setujui $n pengajuan?', message: 'Semua karyawan terpilih akan mendapat notifikasi.', action: 'Setujui $n', icon: LucideIcons.circleCheck) || !mounted) return;
-      for (final r in picked) {
-        decide(context, r, true, aboveNav: true);
+      for (final r in picked.toList()) {
+        await decide(context, r, true, aboveNav: true);
       }
     } else {
       final why = await rejectReason(context, picked.first);
       if (why == null || !mounted) return;
-      for (final r in picked) {
-        decide(context, r, false, reason: why, aboveNav: true);
+      for (final r in picked.toList()) {
+        await decide(context, r, false, reason: why, aboveNav: true);
       }
     }
     setState(() {
       picked.clear();
       selecting = false;
     });
-    if (mounted) toast(context, '$n pengajuan ${ok ? 'disetujui' : 'ditolak'}', aboveNav: true);
   }
 
   @override
@@ -840,8 +873,7 @@ class _ApprovalsState extends State<Approvals> {
                             secondaryBackground: _swipeBg(false),
                             confirmDismiss: (d) async {
                               if (d == DismissDirection.startToEnd) {
-                                decide(context, r, true, aboveNav: true);
-                                return true;
+                                return decide(context, r, true, aboveNav: true);
                               }
                               return rejectOne(context, r, aboveNav: true);
                             },
@@ -887,9 +919,10 @@ class ApprovalDetail extends StatelessWidget {
                     final nav = Navigator.of(context);
                     if (await rejectOne(context, r)) nav.pop();
                   }),
-                  Btn('Setujui', icon: LucideIcons.check, onTap: () {
-                    decide(context, r, true);
-                    Navigator.pop(context);
+                  Btn('Setujui', icon: LucideIcons.check, onTap: () async {
+                    if (await decide(context, r, true) && context.mounted) {
+                      Navigator.pop(context);
+                    }
                   }),
                 ])
               : null,
