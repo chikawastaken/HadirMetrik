@@ -688,7 +688,11 @@ class _EmployeeDetailState extends State<EmployeeDetail> {
             final ok = await confirm(context, title: 'Reset kata sandi ${p.name}?', message: 'Kata sandi sementara akan dibuatkan dan karyawan wajib menggantinya saat login berikutnya.', action: 'Reset', icon: LucideIcons.keyRound);
             if (!ok || !mounted) return;
             try {
-              final empId = p.dbId ?? 1;
+              final empId = p.dbId;
+              if (empId == null) {
+                toast(context, 'Data karyawan ini belum tersinkron dari server.', icon: LucideIcons.alertCircle);
+                return;
+              }
               final res = await Api.hrResetPassword(empId);
               if (!mounted) return;
               final initialPass = res['initial_password'] as String? ?? '-';
@@ -729,7 +733,11 @@ class _EmployeeDetailState extends State<EmployeeDetail> {
             final ok = await confirm(context, title: 'Kirim ulang undangan ke ${p.name}?', message: 'Undangan lama akan dicabut dan tautan aktivasi baru dikirim ke email karyawan.', action: 'Kirim', icon: LucideIcons.mail);
             if (!ok || !mounted) return;
             try {
-              final empId = p.dbId ?? 1;
+              final empId = p.dbId;
+              if (empId == null) {
+                toast(context, 'Data karyawan ini belum tersinkron dari server.', icon: LucideIcons.alertCircle);
+                return;
+              }
               await Api.hrResendInvitation(empId, channels: const ['email'], expiresInDays: 3);
               if (!mounted) return;
               toast(context, 'Undangan baru berhasil dikirim ke ${p.name}.');

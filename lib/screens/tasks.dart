@@ -339,6 +339,7 @@ class _TaskDetailState extends State<TaskDetail> {
       } catch (e) {
         if (!mounted) return;
         toast(context, 'Gagal mengirim komentar.', icon: LucideIcons.alertCircle);
+        return;
       }
     }
 
