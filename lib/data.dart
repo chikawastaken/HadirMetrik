@@ -55,12 +55,41 @@ String terbilang(int n) {
 // ---------------------------------------------------------------- people
 
 class Person {
-  const Person(this.name, this.role, this.division, this.id, {this.status = Att.hadir, this.score, this.faceOk = true, this.location = 'Kantor Pusat'});
+  const Person(
+    this.name,
+    this.role,
+    this.division,
+    this.id, {
+    this.status = Att.hadir,
+    this.score,
+    this.faceOk = true,
+    this.location = 'Kantor Pusat',
+    this.dbId,
+  });
+
   final String name, role, division, id, location;
   final Att status;
   final int? score;
   final bool faceOk;
-  String get initials => name.split(' ').take(2).map((w) => w[0]).join();
+  final int? dbId;
+
+  String get initials => name.split(' ').take(2).map((w) => w.isNotEmpty ? w[0] : '').join();
+
+  factory Person.fromApi(Map<String, dynamic> json) {
+    final statusStr = json['employment_status'] as String? ?? 'active';
+    final hasFace = json['has_face'] == true || json['face_registered_at'] != null;
+    return Person(
+      json['full_name'] as String? ?? '',
+      json['job_title'] as String? ?? '',
+      json['division'] as String? ?? 'Operasional',
+      json['employee_number'] as String? ?? 'HM-${json['id']}',
+      status: statusStr == 'probation' ? Att.menunggu : Att.hadir,
+      faceOk: hasFace,
+      location: json['location'] as String? ?? 'Kantor Pusat',
+      dbId: json['id'] as int?,
+      score: 90,
+    );
+  }
 }
 
 const rina = Person('Rina Pratiwi', 'Staf Gudang', 'Operasional', 'HM-0247', score: 92, location: 'Gudang Kalasan');

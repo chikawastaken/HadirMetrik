@@ -100,6 +100,7 @@ class AppState extends ChangeNotifier {
   final incidents = [...seedIncidents];
   final payroll = seedPayroll();
   final newEmployees = <Person>[];
+  final hrEmployees = <Person>[];
   int payrollStep = 1; // 0 Draft, 1 Ditinjau, 2 Disetujui, 3 Dipublikasikan
 
   int get unread => notifs.where((n) => !n.read).length;
@@ -128,6 +129,7 @@ class AppState extends ChangeNotifier {
       }
       if (role == Role.hr) {
         unawaited(fetchHrTasks());
+        unawaited(fetchHrEmployees());
       }
       notifyListeners();
     } catch (_) {
@@ -148,6 +150,22 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     } catch (_) {
       // Keep existing tasks on failure; app stays offline-capable.
+    }
+  }
+
+  Future<void> fetchHrEmployees({String? search, int? divisionId, String? status}) async {
+    try {
+      final res = await Api.hrEmployeeList(search: search, divisionId: divisionId, status: status);
+      final list = res['employees'] as List? ?? [];
+      hrEmployees.clear();
+      for (final item in list) {
+        if (item is Map<String, dynamic>) {
+          hrEmployees.add(Person.fromApi(item));
+        }
+      }
+      notifyListeners();
+    } catch (_) {
+      // Keep existing list on failure; app stays offline-capable.
     }
   }
 

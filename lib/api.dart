@@ -207,6 +207,27 @@ class Api {
   static Future<Map<String, dynamic>> createEmployee(Map<String, dynamic> body) =>
       post('/hr/employees', body);
 
+  static Future<Map<String, dynamic>> hrEmployeeList({String? search, int? divisionId, String? status}) async {
+    final params = <String, String>{};
+    if (search != null && search.isNotEmpty) params['search'] = search;
+    if (divisionId != null) params['division_id'] = divisionId.toString();
+    if (status != null && status.isNotEmpty) params['status'] = status;
+    final query = params.isEmpty ? '' : '?${Uri(queryParameters: params).query}';
+    return get('/hr/employees$query');
+  }
+
+  static Future<Map<String, dynamic>> hrEmployeeDetail(int id) => get('/hr/employees/$id');
+
+  static Future<Map<String, dynamic>> hrResendInvitation(int id, {List<String>? channels, int? expiresInDays}) =>
+      post('/hr/employees/$id/invitations', {
+        'channels': ?channels,
+        'expires_in_days': ?expiresInDays,
+      });
+
+  static Future<Map<String, dynamic>> hrResetPassword(int id) => post('/hr/employees/$id/reset-password', {});
+
+  static Future<Map<String, dynamic>> hrRevokeInvitation(int id) => delete('/hr/invitations/$id');
+
   // ------------------------------------------------------------ Phase 4
 
   /// Submits an enrollment attempt. The backend keeps it `pending` until a
