@@ -386,4 +386,42 @@ class Api {
     };
     return post('/hr/task-submissions/$submissionId/review', body);
   }
+
+  // ------------------------------------------------------------ Phase 6
+
+  static Future<Map<String, dynamic>> leaveSummary() => get('/administrative-requests/summary');
+
+  static Future<Map<String, dynamic>> leaveList({String? requestType, String? status}) async {
+    final params = <String, String>{};
+    if (requestType != null && requestType.isNotEmpty) params['request_type'] = requestType;
+    if (status != null && status.isNotEmpty) params['status'] = status;
+    final query = params.isEmpty ? '' : '?${Uri(queryParameters: params).query}';
+    return get('/administrative-requests$query');
+  }
+
+  static Future<Map<String, dynamic>> leaveCreate(Map<String, dynamic> body) =>
+      post('/administrative-requests', body);
+
+  static Future<Map<String, dynamic>> leaveCancel(int id) =>
+      post('/administrative-requests/$id/cancel', {});
+
+  static Future<Map<String, dynamic>> leaveResubmit(int id) =>
+      post('/administrative-requests/$id/resubmit', {});
+
+  static Future<Map<String, dynamic>> hrApprovalList({String? requestType}) async {
+    final params = <String, String>{};
+    if (requestType != null && requestType.isNotEmpty) params['request_type'] = requestType;
+    final query = params.isEmpty ? '' : '?${Uri(queryParameters: params).query}';
+    return get('/approvals/requests$query');
+  }
+
+  static Future<Map<String, dynamic>> hrApprovalDecision(
+    int id, {
+    required String decision,
+    String? note,
+  }) =>
+      post('/approvals/requests/$id/decision', {
+        'decision': decision,
+        'note': ?note,
+      });
 }

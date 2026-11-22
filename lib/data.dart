@@ -601,9 +601,10 @@ const payJul = Payslip('Juli 2026', 'Dibayar 24 Jul 2026', [
 enum LeaveType {
   izin('Izin', 'Keperluan pribadi, maksimal 2 hari', LucideIcons.clock, Tone.insight),
   tahunan('Cuti Tahunan', 'Memotong kuota cuti tahunan', LucideIcons.plane, Tone.success),
-  sakit('Sakit', 'Surat dokter wajib jika lebih dari 1 hari', LucideIcons.heartPulse, Tone.danger),
-  dinas('Dinas Luar', 'Tugas kantor di luar lokasi, lampirkan surat tugas', LucideIcons.briefcase, Tone.info),
-  khusus('Cuti Khusus', 'Menikah, duka atau melahirkan', LucideIcons.heart, Tone.violet);
+  sakit('Sakit', 'Izin sakit, lampiran surat dokter bila ada', LucideIcons.heartPulse, Tone.danger),
+  dinas('Dinas Luar', 'Tugas kantor di luar lokasi', LucideIcons.briefcase, Tone.info),
+  khusus('Cuti Khusus', 'Menikah, duka atau melahirkan', LucideIcons.heart, Tone.violet),
+  lembur('Lembur', 'Pengajuan kerja di luar jam kerja', LucideIcons.clock, Tone.info);
 
   const LeaveType(this.label, this.desc, this.icon, this.tone);
   final String label, desc;
@@ -614,13 +615,71 @@ enum LeaveType {
 enum LeaveStatus {
   menunggu('Menunggu', LucideIcons.hourglass, Tone.warning),
   disetujui('Disetujui', LucideIcons.circleCheck, Tone.success),
-  ditolak('Ditolak', LucideIcons.circleX, Tone.danger);
+  ditolak('Ditolak', LucideIcons.circleX, Tone.danger),
+  revisi('Perlu Revisi', LucideIcons.rotateCcw, Tone.warning);
 
   const LeaveStatus(this.label, this.icon, this.tone);
   final String label;
   final IconData icon;
   final Tone tone;
 }
+
+/// Maps the UI labels to the backend request fields.
+Map<String, dynamic> leavePayload({
+  required LeaveType type,
+  required DateTime start,
+  DateTime? end,
+  required String reason,
+  int portion = 0,
+  String? specialReason,
+  double? overtimeHours,
+}) {
+  final finish = end ?? start;
+  final payload = <String, dynamic>{
+    'request_type': switch (type) {
+      LeaveType.tahunan || LeaveType.khusus => 'cuti',
+      LeaveType.lembur => 'lembur',
+      _ => 'izin',
+    },
+    'reason': reason.trim(),
+  };
+
+  if (type == LeaveType.lembur) {
+    payload['overtime_date'] = _dateOnly(start);
+    payload['overtime_hours'] = overtimeHours;
+    return payload;
+  }
+
+  payload['category'] = switch (type) {
+    LeaveType.tahunan => 'tahunan',
+    LeaveType.khusus => 'khusus',
+    LeaveType.sakit => 'sakit',
+    LeaveType.dinas => 'dinas_luar',
+    _ => 'pribadi',
+  };
+  payload['start_date'] = _dateOnly(start);
+  payload['end_date'] = _dateOnly(finish);
+  payload['day_portion'] = const ['full', 'morning', 'afternoon'][portion < 0 ? 0 : (portion > 2 ? 2 : portion)];
+
+  if (type == LeaveType.khusus && specialReason != null) {
+    payload['special_reason'] = specialReason;
+  }
+
+  return payload;
+}
+
+String _dateOnly(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+LeaveType _leaveTypeFromApi(String requestType, String? category) => switch ((requestType, category)) {
+      ('cuti', 'khusus') => LeaveType.khusus,
+      ('cuti', _) => LeaveType.tahunan,
+      ('izin', 'sakit') => LeaveType.sakit,
+      ('izin', 'dinas_luar') => LeaveType.dinas,
+      ('izin', _) => LeaveType.izin,
+      ('lembur', _) => LeaveType.lembur,
+      _ => LeaveType.izin,
+    };
 
 class LeaveReq {
   LeaveReq({
@@ -634,7 +693,92 @@ class LeaveReq {
     this.extra,
     this.file,
     this.conflict,
+    this.id,
+    this.requestType = 'cuti',
+    this.category,
+    this.specialReason,
+    this.startDate,
+    this.endDate,
+    this.dayPortion = 'full',
+    this.dayCount,
+    this.overtimeHours,
+    this.employeeName,
+    this.conflictCount,
   });
+
+  /// Builds a request from the Laravel `administrative_requests` payload.
+  factory LeaveReq.fromApi(Map<String, dynamic> json) {
+    final requestType = json['request_type'] as String? ?? 'izin';
+    final category = json['category'] as String?;
+    final type = _leaveTypeFromApi(requestType, category);
+    final statusRaw = json['status'] as String? ?? 'submitted';
+    final status = switch (statusRaw) {
+      'approved' => LeaveStatus.disetujui,
+      'rejected' => LeaveStatus.ditolak,
+      'needs_revision' => LeaveStatus.revisi,
+      _ => LeaveStatus.menunggu,
+    };
+
+    final start = DateTime.tryParse(json['start_date'] as String? ?? '');
+    final end = DateTime.tryParse(json['end_date'] as String? ?? '');
+    final overtimeDate = DateTime.tryParse(json['overtime_date'] as String? ?? '');
+    final overtimeHours = (json['overtime_hours'] as num?)?.toDouble();
+    final dayCount = (json['day_count'] as num?)?.toDouble();
+    final portion = json['day_portion'] as String? ?? 'full';
+
+    final approvals = (json['approvals'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList()
+      ..sort((a, b) {
+        final round = (a['round'] as num? ?? 1).compareTo(b['round'] as num? ?? 1);
+        if (round != 0) return round;
+        return (a['step_order'] as num? ?? 0).compareTo(b['step_order'] as num? ?? 0);
+      });
+
+    final name = json['employee_name'] as String? ?? '';
+    final submittedAt = DateTime.tryParse(json['submitted_at'] as String? ?? '');
+    final steps = <(String, String, Tone?)>[
+      ('Diajukan ${name.isEmpty ? 'karyawan' : name}', submittedAt == null ? '' : '${tglPendek(submittedAt)}, ${hm(submittedAt)}', null),
+      for (final approval in approvals) _stepFromApproval(approval),
+    ];
+
+    final note = approvals
+        .where((approval) => (approval['note'] as String? ?? '').isNotEmpty)
+        .map((approval) => approval['note'] as String)
+        .lastOrNull ??
+        '';
+
+    final conflictCount = (json['conflict_count'] as num?)?.toInt() ?? 0;
+
+    return LeaveReq(
+      id: (json['id'] as num?)?.toInt(),
+      type: type,
+      requestType: requestType,
+      category: category,
+      specialReason: json['special_reason'] as String?,
+      startDate: start,
+      endDate: end,
+      dayPortion: portion,
+      dayCount: dayCount,
+      overtimeHours: overtimeHours,
+      employeeName: name.isEmpty ? null : name,
+      conflictCount: conflictCount,
+      range: _rangeFromApi(type, start, end, overtimeDate, overtimeHours, dayCount, portion),
+      status: status,
+      note: note,
+      reason: json['reason'] as String? ?? '',
+      who: Person(name.isEmpty ? 'Karyawan' : name, json['job_title'] as String? ?? '', json['division'] as String? ?? '', ''),
+      extra: conflictCount > 0
+          ? '$conflictCount rekan divisi juga mengajukan cuti/izin di tanggal berdekatan.'
+          : null,
+      conflict: conflictCount > 0
+          ? '$conflictCount orang di divisi ini cuti/izin di periode yang sama'
+          : null,
+      steps: steps,
+    );
+  }
+
   final LeaveType type;
   final String range, reason;
   String note;
@@ -642,6 +786,84 @@ class LeaveReq {
   final List<(String, String, Tone?)> steps;
   final Person who;
   final String? extra, file, conflict;
+
+  final int? id;
+  final String requestType;
+  final String? category, specialReason;
+  final DateTime? startDate, endDate;
+  final String dayPortion;
+  final double? dayCount, overtimeHours;
+  final String? employeeName;
+  final int? conflictCount;
+
+  bool get canCancel => id != null && status == LeaveStatus.menunggu;
+  bool get isOvertime => requestType == 'lembur';
+}
+
+(String, String, Tone?) _stepFromApproval(Map<String, dynamic> approval) {
+  final role = approval['approver_role'] == 'hr' ? 'HR' : 'Atasan';
+  final name = approval['approver_name'] as String? ?? '';
+  final title = name.isEmpty ? role : '$role · $name';
+  final status = approval['status'] as String? ?? 'pending';
+  final decidedAt = DateTime.tryParse(approval['decided_at'] as String? ?? '');
+  final when = decidedAt == null ? '' : ' ${tglPendek(decidedAt)}';
+  final detail = switch (status) {
+    'approved' => 'Disetujui$when',
+    'rejected' => 'Ditolak$when',
+    'needs_revision' => 'Perlu revisi$when',
+    'skipped' => 'Tidak diteruskan',
+    _ => 'Menunggu',
+  };
+  final tone = switch (status) {
+    'approved' => Tone.success,
+    'rejected' => Tone.danger,
+    'needs_revision' => Tone.warning,
+    'pending' => Tone.warning,
+    _ => null,
+  };
+  return (title, detail, tone);
+}
+
+String _rangeFromApi(
+  LeaveType type,
+  DateTime? start,
+  DateTime? end,
+  DateTime? overtimeDate,
+  double? overtimeHours,
+  double? dayCount,
+  String portion,
+) {
+  if (type == LeaveType.lembur) {
+    final date = overtimeDate ?? start;
+    final hours = overtimeHours == null
+        ? ''
+        : '${overtimeHours == overtimeHours.roundToDouble() ? overtimeHours.toInt() : overtimeHours.toStringAsFixed(1).replaceAll('.', ',')} jam';
+    return 'Lembur $hours · ${date == null ? '-' : tglPendek(date)}';
+  }
+
+  if (start == null) return '-';
+  final finish = end ?? start;
+
+  if (portion != 'full') {
+    return '${tglPendek(start)} · setengah hari ${portion == 'morning' ? 'pagi' : 'siang'}';
+  }
+
+  if (start.isAtSameMomentAs(finish)) {
+    return '${tglPendek(start)} · sehari penuh';
+  }
+
+  final days = dayCount == null
+      ? _weekdaysBetween(start, finish)
+      : (dayCount == dayCount.roundToDouble() ? dayCount.toInt() : dayCount.toStringAsFixed(1).replaceAll('.', ','));
+  return '${hariPendek[start.weekday - 1]}, ${start.day} sampai ${tglPendek(finish)} · $days hari';
+}
+
+int _weekdaysBetween(DateTime a, DateTime b) {
+  var n = 0;
+  for (var d = a; !d.isAfter(b); d = d.add(const Duration(days: 1))) {
+    if (d.weekday < 6) n++;
+  }
+  return n;
 }
 
 List<LeaveReq> seedLeaves() => [

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../api.dart';
 import '../data.dart';
 import '../main.dart';
 import '../state.dart';
@@ -39,6 +40,13 @@ class _LeavePageState extends State<LeavePage> {
   var type = LeaveType.sakit;
 
   @override
+  void initState() {
+    super.initState();
+    unawaited(app.fetchLeaves());
+    unawaited(app.fetchLeaveSummary());
+  }
+
+  @override
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: Listenable.merge([app, leaveTab]),
         builder: (context, _) => Screen(
@@ -52,7 +60,11 @@ class _LeavePageState extends State<LeavePage> {
         ),
       );
 
-  List<Widget> _create(BuildContext context) => [
+  List<Widget> _create(BuildContext context) {
+    final quota = (app.leaveSummary['annual_quota_days'] as num?)?.toInt() ?? 12;
+    final remaining = (app.leaveSummary['annual_remaining_days'] as num?)?.toDouble() ?? 9;
+    final used = (quota - remaining).clamp(0, quota);
+    return [
         gap8,
         AppCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -62,14 +74,17 @@ class _LeavePageState extends State<LeavePage> {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Sisa cuti tahunan', style: T.caption),
-                  Text.rich(TextSpan(children: [TextSpan(text: '9', style: T.numL.copyWith(color: C.primary)), TextSpan(text: ' dari 12 hari', style: T.bodyM)])),
+                  Text.rich(TextSpan(children: [
+                    TextSpan(text: remaining == remaining.roundToDouble() ? '${remaining.toInt()}' : remaining.toString(), style: T.numL.copyWith(color: C.primary)),
+                    TextSpan(text: ' dari $quota hari', style: T.bodyM),
+                  ])),
                 ]),
               ),
             ]),
             gap12,
-            const Bar(9 / 12, color: C.accent, height: 8),
+            Bar(quota == 0 ? 0 : remaining / quota, color: C.accent, height: 8),
             gap8,
-            Text('Terpakai 3 hari · Cuti Tahunan 14 sampai 16 Okt', style: T.small),
+            Text('Terpakai $used hari · kuota tahun ini', style: T.small),
           ]),
         ),
         const Overline('LANGKAH 1 DARI 2 · PILIH JENIS'),
@@ -90,6 +105,7 @@ class _LeavePageState extends State<LeavePage> {
         gap12,
         Btn('Lanjut', icon: LucideIcons.arrowRight, onTap: () => push(context, LeaveForm(type), root: true)),
       ];
+  }
 
   List<Widget> _status(BuildContext context) => [
         gap8,
@@ -117,9 +133,24 @@ class _LeavePageState extends State<LeavePage> {
                     Btn('Batalkan pengajuan', kind: BtnKind.light, icon: LucideIcons.x, height: 48, onTap: () async {
                       final ok = await confirm(context, title: 'Batalkan pengajuan?', message: '${r.type.label} ${r.range} akan ditarik dan tidak diproses atasan.', action: 'Batalkan Pengajuan', icon: LucideIcons.x, danger: true);
                       if (!ok || !context.mounted) return;
+                      if (r.id != null) {
+                        try {
+                          await Api.leaveCancel(r.id!);
+                        } on ApiError catch (e) {
+                          if (!context.mounted) return;
+                          toast(context, e.message, icon: LucideIcons.alertCircle);
+                          return;
+                        } catch (_) {
+                          if (!context.mounted) return;
+                          toast(context, 'Tidak dapat membatalkan pengajuan. Periksa koneksi.', icon: LucideIcons.alertCircle);
+                          return;
+                        }
+                      }
                       app.leaves.remove(r);
-                      app.approvals.remove(r);
+                      app.approvals.removeWhere((a) => a.id != null && a.id == r.id);
                       app.touch();
+                      unawaited(app.fetchLeaveSummary());
+                      if (!context.mounted) return;
                       toast(context, 'Pengajuan ${r.type.label.toLowerCase()} dibatalkan.', aboveNav: true);
                     }),
                   ],
@@ -178,7 +209,9 @@ class _LeaveFormState extends State<LeaveForm> {
   late DateTime start = type == LeaveType.sakit ? DateTime(2026, 10, 6) : DateTime(2026, 10, 8);
   late DateTime end = type == LeaveType.sakit ? DateTime(2026, 10, 8) : start;
   int durasi = 0;
+  int special = 0;
   late final reason = TextEditingController(text: type == LeaveType.sakit ? _sakitReason : '');
+  final hours = TextEditingController(text: '2');
   String delegate = 'Budi Santoso';
   String contact = '0812 3456 7821';
   String? file;
@@ -187,22 +220,29 @@ class _LeaveFormState extends State<LeaveForm> {
   bool tried = false;
 
   static const _durasi = ['Sehari penuh', 'Setengah hari pagi', 'Setengah hari siang'];
+  static const _special = ['menikah', 'duka', 'melahirkan'];
+  static const _specialLabel = ['Menikah', 'Duka', 'Melahirkan'];
 
-  int get days => workDays(start, end);
-  bool get needsFile => type == LeaveType.dinas || (type == LeaveType.sakit && days > 1);
-  bool get overQuota => type == LeaveType.tahunan && days > 9;
+  bool get isOvertime => type == LeaveType.lembur;
+  int get days => isOvertime ? 0 : workDays(start, end);
+  double get overtimeHours => double.tryParse(hours.text.trim().replaceAll(',', '.')) ?? 0;
+  int get remainingQuota => (app.leaveSummary['annual_remaining_days'] as num?)?.toInt() ?? 9;
+  bool get needsFile => false; // Lampiran pengajuan belum didukung backend.
+  bool get overQuota => type == LeaveType.tahunan && days > remainingQuota;
   String get fileLabel => type == LeaveType.dinas ? 'Surat tugas' : 'Surat dokter';
 
   List<String> get errors => [
         if (reason.text.trim().length < 10) 'Alasan minimal 10 karakter',
-        if (needsFile && file == null) '$fileLabel wajib dilampirkan',
-        if (days == 0) 'Pilih minimal 1 hari kerja',
+        if (isOvertime && (overtimeHours <= 0 || overtimeHours > 12)) 'Jam lembur harus lebih dari 0 dan maksimal 12 jam',
+        if (!isOvertime && days == 0) 'Pilih minimal 1 hari kerja',
+        if (type == LeaveType.khusus && days > 3) 'Cuti khusus maksimal 3 hari',
       ];
 
   @override
   void dispose() {
     timer?.cancel();
     reason.dispose();
+    hours.dispose();
     super.dispose();
   }
 
@@ -307,25 +347,50 @@ class _LeaveFormState extends State<LeaveForm> {
   void next() {
     setState(() => tried = true);
     if (errors.isNotEmpty || overQuota) return;
+
+    final quota = (app.leaveSummary['annual_quota_days'] as num?)?.toInt() ?? 12;
+    final hoursLabel = overtimeHours == overtimeHours.roundToDouble()
+        ? '${overtimeHours.toInt()}'
+        : overtimeHours.toStringAsFixed(1).replaceAll('.', ',');
+    final range = isOvertime
+        ? 'Lembur $hoursLabel jam · ${tglPendek(start)}'
+        : rangeText(start, end, days, _durasi[durasi]);
+    final payload = leavePayload(
+      type: type,
+      start: start,
+      end: end,
+      reason: reason.text,
+      portion: durasi,
+      specialReason: _special[special],
+      overtimeHours: isOvertime ? overtimeHours : null,
+    );
+
     push(
       context,
       LeavePreview(
         LeaveReq(
           type: type,
-          range: rangeText(start, end, days, _durasi[durasi]),
+          range: range,
           status: LeaveStatus.menunggu,
           note: '',
           reason: reason.text.trim(),
           file: file,
+          startDate: start,
+          endDate: isOvertime ? null : end,
+          dayPortion: const ['full', 'morning', 'afternoon'][durasi],
+          overtimeHours: isOvertime ? overtimeHours : null,
           steps: [
-            ('Diajukan Rina Pratiwi', '${tglPendek(app.now)}, ${hm(app.now)}', null),
-            ('Atasan · Dimas Ardiansyah', 'Menunggu', Tone.warning),
-            ('HR · Sari Wulandari', 'Menunggu', null),
+            ('Diajukan ${app.profile?.employee.fullName ?? 'Kamu'}', '${tglPendek(app.now)}, ${hm(app.now)}', null),
+            ('Atasan', 'Menunggu', Tone.warning),
+            ('HR', 'Menunggu', null),
           ],
-          extra: type == LeaveType.tahunan ? 'Sisa cuti 9 dari 12 hari, setelah ini ${9 - days}' : (type == LeaveType.sakit ? 'Sakit tidak memotong cuti tahunan' : null),
+          extra: type == LeaveType.tahunan
+              ? 'Sisa cuti $remainingQuota dari $quota hari, setelah ini ${remainingQuota - days}'
+              : (type == LeaveType.sakit ? 'Sakit tidak memotong cuti tahunan' : null),
         ),
         delegate: delegate,
         contact: contact,
+        payload: payload,
       ),
     );
   }
@@ -343,7 +408,7 @@ class _LeaveFormState extends State<LeaveForm> {
           gap12,
         ],
         if (overQuota) ...[
-          Banner2('Kuota cuti tidak cukup', body: 'Kamu mengajukan $days hari, sisa cuti tinggal 9 hari. Kurangi tanggal atau pilih Izin.', tone: Tone.danger, icon: LucideIcons.circleX),
+          Banner2('Kuota cuti tidak cukup', body: 'Kamu mengajukan $days hari, sisa cuti tinggal $remainingQuota hari. Kurangi tanggal atau pilih Izin.', tone: Tone.danger, icon: LucideIcons.circleX),
           gap12,
         ],
         AppCard(
@@ -355,22 +420,47 @@ class _LeaveFormState extends State<LeaveForm> {
           ]),
         ),
         gap16,
-        Row(children: [
-          Expanded(child: PickerBox(label: 'Tanggal mulai', value: tglPendek(start), icon: LucideIcons.calendar, onTap: () => pickDate(true))),
+        if (isOvertime) ...[
+          PickerBox(label: 'Tanggal lembur', value: tglPendek(start), icon: LucideIcons.calendar, onTap: () => pickDate(true)),
           gap12,
-          Expanded(child: PickerBox(label: 'Tanggal selesai', value: tglPendek(end), icon: LucideIcons.calendar, onTap: () => pickDate(false))),
-        ]),
-        gap8,
-        Row(children: [
-          const Icon(LucideIcons.info, size: 14, color: C.text3),
-          gap4,
-          Text('$days hari kerja${start != end ? ', Sabtu dan Minggu tidak dihitung' : ''}', style: T.caption),
-        ]),
-        if (start == end) ...[
-          gap16,
-          Text('Durasi', style: T.title),
+          Field(
+            label: 'Jam lembur',
+            hint: 'Contoh: 2.5',
+            controller: hours,
+            keyboard: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (_) => setState(() {}),
+            error: tried && (overtimeHours <= 0 || overtimeHours > 12) ? 'Isi 0–12 jam' : null,
+          ),
           gap8,
-          ChipWrap(_durasi, (i) => i == durasi, (i) => setState(() => durasi = i)),
+          Row(children: [
+            const Icon(LucideIcons.info, size: 14, color: C.text3),
+            gap4,
+            Expanded(child: Text('Ajukan sebelum lembur dimulai. Maksimal 12 jam.', style: T.caption)),
+          ]),
+        ] else ...[
+          Row(children: [
+            Expanded(child: PickerBox(label: 'Tanggal mulai', value: tglPendek(start), icon: LucideIcons.calendar, onTap: () => pickDate(true))),
+            gap12,
+            Expanded(child: PickerBox(label: 'Tanggal selesai', value: tglPendek(end), icon: LucideIcons.calendar, onTap: () => pickDate(false))),
+          ]),
+          gap8,
+          Row(children: [
+            const Icon(LucideIcons.info, size: 14, color: C.text3),
+            gap4,
+            Text('$days hari kerja${start != end ? ', Sabtu dan Minggu tidak dihitung' : ''}', style: T.caption),
+          ]),
+          if (start == end) ...[
+            gap16,
+            Text('Durasi', style: T.title),
+            gap8,
+            ChipWrap(_durasi, (i) => i == durasi, (i) => setState(() => durasi = i)),
+          ],
+        ],
+        if (type == LeaveType.khusus) ...[
+          gap16,
+          Text('Alasan cuti khusus', style: T.title),
+          gap8,
+          ChipWrap(_specialLabel, (i) => i == special, (i) => setState(() => special = i)),
         ],
         gap16,
         Field(
@@ -429,9 +519,10 @@ class _LeaveFormState extends State<LeaveForm> {
 // ---------------------------------------------------------------- preview, letter, sent
 
 class LeavePreview extends StatefulWidget {
-  const LeavePreview(this.req, {super.key, required this.delegate, required this.contact});
+  const LeavePreview(this.req, {super.key, required this.delegate, required this.contact, required this.payload});
   final LeaveReq req;
   final String delegate, contact;
+  final Map<String, dynamic> payload;
   @override
   State<LeavePreview> createState() => _LeavePreviewState();
 }
@@ -441,12 +532,28 @@ class _LeavePreviewState extends State<LeavePreview> {
 
   Future<void> send() async {
     setState(() => busy = true);
-    await Future.delayed(const Duration(milliseconds: 900));
+    LeaveReq sent = widget.req;
+    try {
+      final res = await Api.leaveCreate(widget.payload);
+      final json = res['request'];
+      if (json is Map<String, dynamic>) sent = LeaveReq.fromApi(json);
+    } on ApiError catch (e) {
+      if (!mounted) return;
+      setState(() => busy = false);
+      toast(context, e.message, icon: LucideIcons.alertCircle);
+      return;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => busy = false);
+      toast(context, 'Tidak dapat mengirim pengajuan. Periksa koneksi lalu coba lagi.', icon: LucideIcons.alertCircle);
+      return;
+    }
     if (!mounted) return;
-    app.leaves.insert(0, widget.req);
-    app.approvals.insert(0, widget.req);
+    app.leaves.insert(0, sent);
     app.touch();
-    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => LeaveSent(widget.req)), (r) => r.isFirst);
+    unawaited(app.fetchLeaves());
+    unawaited(app.fetchLeaveSummary());
+    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => LeaveSent(sent)), (r) => r.isFirst);
   }
 
   @override
@@ -478,6 +585,7 @@ class Letter extends StatelessWidget {
       LeaveType.tahunan => 'SURAT PERMOHONAN CUTI TAHUNAN',
       LeaveType.dinas => 'SURAT DINAS LUAR',
       LeaveType.khusus => 'SURAT PERMOHONAN CUTI KHUSUS',
+      LeaveType.lembur => 'SURAT PERMOHONAN LEMBUR',
     };
     Widget row(String k, String v) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 3),

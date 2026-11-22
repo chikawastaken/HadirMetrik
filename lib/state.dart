@@ -96,7 +96,8 @@ class AppState extends ChangeNotifier {
   final List<TaskItem> hrTasks = [];
   final notifs = seedNotifs();
   final approvals = seedApprovals();
-  late final leaves = [approvals[1], ...seedLeaves()];
+  final leaves = <LeaveReq>[...seedLeaves()];
+  Map<String, dynamic> leaveSummary = {};
   final incidents = [...seedIncidents];
   final payroll = seedPayroll();
   final newEmployees = <Person>[];
@@ -166,6 +167,51 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     } catch (_) {
       // Keep existing list on failure; app stays offline-capable.
+    }
+  }
+
+  Future<void> fetchLeaves() async {
+    try {
+      final res = await Api.leaveList();
+      final list = res['requests'] as List? ?? [];
+      leaves.clear();
+      for (final item in list) {
+        if (item is Map<String, dynamic>) {
+          leaves.add(LeaveReq.fromApi(item));
+        }
+      }
+      notifyListeners();
+    } catch (_) {
+      // Keep existing requests on failure; app stays offline-capable.
+    }
+  }
+
+  Future<void> fetchLeaveSummary() async {
+    try {
+      final res = await Api.leaveSummary();
+      final summary = res['summary'];
+      if (summary is Map) {
+        leaveSummary = Map<String, dynamic>.from(summary);
+        notifyListeners();
+      }
+    } catch (_) {
+      // Quota card falls back to its local defaults.
+    }
+  }
+
+  Future<void> fetchApprovals() async {
+    try {
+      final res = await Api.hrApprovalList();
+      final list = res['requests'] as List? ?? [];
+      approvals.clear();
+      for (final item in list) {
+        if (item is Map<String, dynamic>) {
+          approvals.add(LeaveReq.fromApi(item));
+        }
+      }
+      notifyListeners();
+    } catch (_) {
+      // Keep existing queue on failure; app stays offline-capable.
     }
   }
 
