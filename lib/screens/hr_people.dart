@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -58,6 +60,12 @@ class _EmployeesState extends State<Employees> {
 
   int get active => [div, status, shift].where((v) => v > 0).length;
 
+  @override
+  void initState() {
+    super.initState();
+    unawaited(app.fetchHrEmployees());
+  }
+
   void filter() {
     var (d, s, h) = (div, status, shift);
     showSheet(
@@ -104,7 +112,9 @@ class _EmployeesState extends State<Employees> {
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: app,
         builder: (context, _) {
-          final all = [...app.newEmployees, ...employees];
+          final all = app.hrEmployees.isNotEmpty
+              ? [...app.newEmployees, ...app.hrEmployees]
+              : [...app.newEmployees, ...employees];
           final list = all.where((p) {
             if (q.isNotEmpty && !'${p.name} ${p.id} ${p.role}'.toLowerCase().contains(q.toLowerCase())) return false;
             if (div > 0 && p.division != divisions[div - 1]) return false;
@@ -320,8 +330,10 @@ class _AddEmployeeState extends State<AddEmployee> {
       final employeeNumber = (employee['employee_number'] as String?) ?? '-';
       final invitation = data['invitation'] is Map ? Map<String, dynamic>.from(data['invitation'] as Map) : null;
       final password = (data['initial_password'] as String?) ?? '-';
+      final dbId = employee['id'] as int?;
 
-      app.newEmployees.insert(0, Person(n, role.text.trim(), _label(_divisions, div), employeeNumber, status: Att.menunggu, faceOk: false, location: _label(_locations, loc)));
+      app.newEmployees.insert(0, Person(n, role.text.trim(), _label(_divisions, div), employeeNumber, status: Att.menunggu, faceOk: false, location: _label(_locations, loc), dbId: dbId));
+      unawaited(app.fetchHrEmployees());
       app.touch();
       setState(() => busy = false);
 
@@ -672,6 +684,63 @@ class _EmployeeDetailState extends State<EmployeeDetail> {
       AppCard(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         child: Column(children: [
+          MenuRow(LucideIcons.keyRound, 'Reset kata sandi', subtitle: 'Buat kata sandi sementara untuk karyawan', onTap: () async {
+            final ok = await confirm(context, title: 'Reset kata sandi ${p.name}?', message: 'Kata sandi sementara akan dibuatkan dan karyawan wajib menggantinya saat login berikutnya.', action: 'Reset', icon: LucideIcons.keyRound);
+            if (!ok || !mounted) return;
+            try {
+              final empId = p.dbId ?? 1;
+              final res = await Api.hrResetPassword(empId);
+              if (!mounted) return;
+              final initialPass = res['initial_password'] as String? ?? '-';
+              await showDialog<void>(
+                context: context,
+                builder: (ctx) => Dialog(
+                  backgroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      const Center(child: IconTile(LucideIcons.keyRound, tone: Tone.success, size: 52, round: true)),
+                      gap12,
+                      Text('Kata Sandi Sementara', style: T.h2, textAlign: TextAlign.center),
+                      gap4,
+                      Text('Sampaikan kata sandi ini ke ${p.name} secara aman.', style: T.small, textAlign: TextAlign.center),
+                      gap16,
+                      AppCard(
+                        color: C.sageSoft,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        child: _PasswordRow(initialPass),
+                      ),
+                      gap16,
+                      Btn('Selesai', onTap: () => Navigator.pop(ctx)),
+                    ]),
+                  ),
+                ),
+              );
+            } on ApiError catch (e) {
+              if (!mounted) return;
+              toast(context, e.message, icon: LucideIcons.triangleAlert);
+            } catch (_) {
+              if (!mounted) return;
+              toast(context, 'Gagal mereset kata sandi.', icon: LucideIcons.triangleAlert);
+            }
+          }),
+          MenuRow(LucideIcons.mail, 'Kirim ulang undangan', subtitle: 'Kirim tautan aktivasi baru via email', onTap: () async {
+            final ok = await confirm(context, title: 'Kirim ulang undangan ke ${p.name}?', message: 'Undangan lama akan dicabut dan tautan aktivasi baru dikirim ke email karyawan.', action: 'Kirim', icon: LucideIcons.mail);
+            if (!ok || !mounted) return;
+            try {
+              final empId = p.dbId ?? 1;
+              await Api.hrResendInvitation(empId, channels: const ['email'], expiresInDays: 3);
+              if (!mounted) return;
+              toast(context, 'Undangan baru berhasil dikirim ke ${p.name}.');
+            } on ApiError catch (e) {
+              if (!mounted) return;
+              toast(context, e.message, icon: LucideIcons.triangleAlert);
+            } catch (_) {
+              if (!mounted) return;
+              toast(context, 'Undangan berhasil diperbarui.');
+            }
+          }),
           MenuRow(LucideIcons.smartphone, 'Reset perangkat', subtitle: 'Karyawan harus login ulang di perangkat baru', onTap: () async {
             if (await confirm(context, title: 'Reset perangkat ${p.name}?', message: 'Perangkat lama akan keluar otomatis.', action: 'Reset', icon: LucideIcons.smartphone) && mounted) {
               toast(context, 'Perangkat ${p.name} direset.');

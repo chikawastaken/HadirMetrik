@@ -207,6 +207,27 @@ class Api {
   static Future<Map<String, dynamic>> createEmployee(Map<String, dynamic> body) =>
       post('/hr/employees', body);
 
+  static Future<Map<String, dynamic>> hrEmployeeList({String? search, int? divisionId, String? status}) async {
+    final params = <String, String>{};
+    if (search != null && search.isNotEmpty) params['search'] = search;
+    if (divisionId != null) params['division_id'] = divisionId.toString();
+    if (status != null && status.isNotEmpty) params['status'] = status;
+    final query = params.isEmpty ? '' : '?${Uri(queryParameters: params).query}';
+    return get('/hr/employees$query');
+  }
+
+  static Future<Map<String, dynamic>> hrEmployeeDetail(int id) => get('/hr/employees/$id');
+
+  static Future<Map<String, dynamic>> hrResendInvitation(int id, {List<String>? channels, int? expiresInDays}) =>
+      post('/hr/employees/$id/invitations', {
+        'channels': ?channels,
+        'expires_in_days': ?expiresInDays,
+      });
+
+  static Future<Map<String, dynamic>> hrResetPassword(int id) => post('/hr/employees/$id/reset-password', {});
+
+  static Future<Map<String, dynamic>> hrRevokeInvitation(int id) => delete('/hr/invitations/$id');
+
   // ------------------------------------------------------------ Phase 4
 
   /// Submits an enrollment attempt. The backend keeps it `pending` until a
@@ -262,7 +283,7 @@ class Api {
 
   static Future<Map<String, dynamic>> taskStart(int id) async => post('/tasks/$id/start', {});
 
-  static Future<Map<String, dynamic>> taskProgress(int id, {required int progressPercent, List<String>? checklist}) async {
+  static Future<Map<String, dynamic>> taskProgress(int id, {required int progressPercent, dynamic checklist}) async {
     final body = <String, dynamic>{'progress_percent': progressPercent};
     if (checklist != null) body['checklist'] = checklist;
     return patch('/tasks/$id/progress', body);
@@ -271,7 +292,7 @@ class Api {
   static Future<Map<String, dynamic>> taskSubmit(
     int id, {
     String? note,
-    List<String>? checklist,
+    dynamic checklist,
     List<int>? attachmentIds,
     List<http.MultipartFile>? evidence,
   }) async {
@@ -283,7 +304,6 @@ class Api {
       // Multipart request needed for file uploads.
       final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/tasks/$id/submissions'));
       request.headers.addAll(_headers.map((k, v) => MapEntry(k, v)));
-      request.headers['Content-Type'] = 'multipart/form-data';
       request.fields.addAll(body.map((k, v) => MapEntry(k, jsonEncode(v))));
       for (final f in evidence) {
         request.files.add(f);
@@ -307,7 +327,6 @@ class Api {
     if (file != null) {
       final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/tasks/$id/attachments'));
       request.headers.addAll(_headers.map((k, v) => MapEntry(k, v)));
-      request.headers['Content-Type'] = 'multipart/form-data';
       request.fields.addAll(body.map((k, v) => MapEntry(k, v.toString())));
       request.files.add(file);
       final streamed = await request.send();
@@ -315,5 +334,56 @@ class Api {
       return _handle(response);
     }
     return post('/tasks/$id/attachments', body);
+  }
+
+  // ------------------------------------------------------------ HR Tasks
+
+  static Future<Map<String, dynamic>> hrTaskList({String? status, int? page}) async {
+    final params = <String, String>{};
+    if (status != null && status.isNotEmpty) params['status'] = status;
+    if (page != null) params['page'] = page.toString();
+    final query = params.isEmpty ? '' : '?${Uri(queryParameters: params).query}';
+    return get('/hr/tasks$query');
+  }
+
+  static Future<Map<String, dynamic>> hrTaskOptions() async => get('/hr/tasks/options');
+
+  static Future<Map<String, dynamic>> hrTaskCreate({
+    required String title,
+    String? description,
+    required String priority,
+    required List<int> assigneeIds,
+    int? divisionId,
+    bool requiresPhotoProof = false,
+    List<Map<String, String>>? checklistTemplate,
+    String? dueAt,
+  }) async {
+    final body = <String, dynamic>{
+      'title': title,
+      'description': ?description,
+      'priority': priority,
+      'assignee_ids': assigneeIds,
+      'division_id': ?divisionId,
+      'requires_photo_proof': requiresPhotoProof,
+      'checklist_template': ?checklistTemplate,
+      'due_at': ?dueAt,
+    };
+    return post('/hr/tasks', body);
+  }
+
+  static Future<Map<String, dynamic>> hrTaskCancel(int id) async => post('/hr/tasks/$id/cancel', {});
+
+  static Future<Map<String, dynamic>> hrTaskReview(
+    int submissionId, {
+    required String decision,
+    int? rating,
+    String? note,
+  }) async {
+    final body = <String, dynamic>{
+      'decision': decision,
+      'rating': ?rating,
+      'note': ?note,
+    };
+    return post('/hr/task-submissions/$submissionId/review', body);
   }
 }

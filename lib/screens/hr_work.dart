@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../api.dart';
 import '../data.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -29,6 +32,12 @@ class HrTasks extends StatefulWidget {
 
 class _HrTasksState extends State<HrTasks> {
   int chip = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(app.fetchHrTasks());
+  }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -128,28 +137,59 @@ class _CreateTaskState extends State<CreateTask> {
     setState(() => tried = true);
     if (title.text.trim().length < 5 || assignees.isEmpty) return;
     setState(() => busy = true);
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    if (!mounted) return;
+
     final who = assignees;
-    final t = TaskItem(
-      title: title.text.trim(),
-      desc: desc.text.trim().isEmpty ? 'Tidak ada deskripsi.' : desc.text.trim(),
-      prio: Prio.values[prio],
-      status: TaskStatus.proses,
-      deadline: deadline,
-      from: 'Sari Wulandari',
-      remaining: 'Sisa ${due - 7} hari',
-      created: 'Rab, 7 Okt 2026',
-      checklist: [for (final c in checklist) CheckItem(c)],
-      assignees: who,
-      division: personByName(who.first).division,
-    );
+    final prioStr = switch (Prio.values[prio]) {
+      Prio.tinggi => 'high',
+      Prio.rendah => 'low',
+      _ => 'medium',
+    };
+    final template = checklist.indexed.map((e) => {
+      'key': 'c${e.$1 + 1}',
+      'label': e.$2,
+    }).toList();
+
+    TaskItem? createdItem;
+    try {
+      final res = await Api.hrTaskCreate(
+        title: title.text.trim(),
+        description: desc.text.trim().isEmpty ? null : desc.text.trim(),
+        priority: prioStr,
+        assigneeIds: const [1],
+        requiresPhotoProof: proof,
+        checklistTemplate: template,
+        dueAt: DateTime(2026, 10, due, 17).toIso8601String(),
+      );
+      final taskJson = res['task'] as Map<String, dynamic>?;
+      if (taskJson != null) {
+        createdItem = TaskItem.fromApi(taskJson);
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
+    final t = createdItem ??
+        TaskItem(
+          title: title.text.trim(),
+          desc: desc.text.trim().isEmpty ? 'Tidak ada deskripsi.' : desc.text.trim(),
+          prio: Prio.values[prio],
+          status: TaskStatus.proses,
+          deadline: deadline,
+          from: 'Sari Wulandari',
+          remaining: 'Sisa ${due - 7} hari',
+          created: 'Rab, 7 Okt 2026',
+          checklist: [for (final c in checklist) CheckItem(c)],
+          assignees: who,
+          division: personByName(who.first).division,
+        );
+
     app.hrTasks.insert(0, t);
     if (who.contains(rina.name)) {
       app.tasks.add(t);
       app.notifs.insert(0, Notif(NCat.tugas, 'Tugas baru dari Sari Wulandari', '${t.title} · tenggat $deadline', hm(app.now), 'HARI INI'));
     }
     app.touch();
+    unawaited(app.fetchHrTasks());
+    unawaited(app.fetchTasks());
     Navigator.pop(context);
     toast(context, 'Tugas dibuat untuk ${who.length} orang.', aboveNav: true);
   }
@@ -300,14 +340,31 @@ class _TaskReviewState extends State<TaskReview> {
                 gap12,
                 Field(hint: 'Jelaskan bagian yang perlu diperbaiki', controller: c, maxLines: 3, error: err),
                 gap16,
-                Btn('Kirim Permintaan Revisi', icon: LucideIcons.rotateCcw, onTap: () {
+                Btn('Kirim Permintaan Revisi', icon: LucideIcons.rotateCcw, onTap: () async {
                   if (c.text.trim().length < 10) return set(() => err = 'Catatan wajib diisi, minimal 10 karakter');
+                  final noteText = c.text.trim();
+                  if (t.latestSubmissionId != null) {
+                    try {
+                      await Api.hrTaskReview(
+                        t.latestSubmissionId!,
+                        decision: 'revision_requested',
+                        note: noteText,
+                      );
+                      unawaited(app.fetchHrTasks());
+                      unawaited(app.fetchTasks());
+                    } catch (e) {
+                      if (!mounted) return;
+                      final msg = e is ApiError ? e.message : 'Gagal meminta revisi.';
+                      toast(context, msg, icon: LucideIcons.alertCircle);
+                    }
+                  }
                   t
                     ..status = TaskStatus.revisi
-                    ..revisionNote = c.text.trim();
-                  _notifyRina(NCat.revisi, 'Revisi diminta', 'Sari Wulandari: ${c.text.trim()}');
+                    ..revisionNote = noteText;
+                  _notifyRina(NCat.revisi, 'Revisi diminta', 'Sari Wulandari: $noteText');
                   app.touch();
-                  Navigator.pop(ctx);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (!mounted) return;
                   Navigator.pop(context);
                   toast(context, 'Permintaan revisi dikirim.');
                 }),
@@ -344,13 +401,29 @@ class _TaskReviewState extends State<TaskReview> {
                 gap12,
                 const Field(hint: 'Komentar (opsional)', maxLines: 2),
                 gap16,
-                Btn('Setujui Tugas', icon: LucideIcons.check, onTap: () {
+                Btn('Setujui Tugas', icon: LucideIcons.check, onTap: () async {
+                  if (t.latestSubmissionId != null) {
+                    try {
+                      await Api.hrTaskReview(
+                        t.latestSubmissionId!,
+                        decision: 'approved',
+                        rating: stars,
+                      );
+                      unawaited(app.fetchHrTasks());
+                      unawaited(app.fetchTasks());
+                    } catch (e) {
+                      if (!mounted) return;
+                      final msg = e is ApiError ? e.message : 'Gagal menyetujui tugas.';
+                      toast(context, msg, icon: LucideIcons.alertCircle);
+                    }
+                  }
                   t
                     ..status = TaskStatus.selesai
                     ..progress = 1;
                   _notifyRina(NCat.tugas, 'Tugas disetujui', '${t.title} disetujui Sari Wulandari · nilai $stars dari 5');
                   app.touch();
-                  Navigator.pop(ctx);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (!mounted) return;
                   Navigator.pop(context);
                   toast(context, 'Tugas disetujui.');
                 }),
