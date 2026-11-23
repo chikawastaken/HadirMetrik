@@ -37,6 +37,7 @@ class _HrTasksState extends State<HrTasks> {
   void initState() {
     super.initState();
     unawaited(app.fetchHrTasks());
+    unawaited(app.fetchHrEmployees());
   }
 
   @override
@@ -119,6 +120,7 @@ class _CreateTaskState extends State<CreateTask> {
   @override
   void initState() {
     super.initState();
+    unawaited(app.fetchHrEmployees());
     if (widget.assignee == null) {
       final list = app.hrEmployees.isNotEmpty ? app.hrEmployees : employees;
       if (list.isNotEmpty) picked.add(list.first.name);
