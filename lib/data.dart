@@ -510,11 +510,57 @@ enum NCat {
 }
 
 class Notif {
-  Notif(this.cat, this.title, this.body, this.time, this.group, {this.read = false});
+  Notif(this.cat, this.title, this.body, this.time, this.group, {this.read = false, this.id});
+
+  /// Builds an in-app notification from the Laravel `notifications` payload.
+  factory Notif.fromApi(Map<String, dynamic> json, {DateTime? now}) {
+    final createdAt = DateTime.tryParse(json['created_at'] as String? ?? '')?.toLocal();
+    final reference = now ?? DateTime.now();
+    final readAt = json['read_at'];
+
+    final group = createdAt == null
+        ? 'SEBELUMNYA'
+        : _sameDay(createdAt, reference)
+            ? 'HARI INI'
+            : _sameDay(createdAt, reference.subtract(const Duration(days: 1)))
+                ? 'KEMARIN'
+                : 'SEBELUMNYA';
+
+    final time = createdAt == null
+        ? ''
+        : group == 'SEBELUMNYA'
+            ? tglPendek(createdAt)
+            : hm(createdAt);
+
+    return Notif(
+      _notifCat(json['category'] as String?),
+      json['title'] as String? ?? '',
+      json['body'] as String? ?? '',
+      time,
+      group,
+      read: readAt != null,
+      id: (json['id'] as num?)?.toInt(),
+    );
+  }
+
   final NCat cat;
   final String title, body, time, group;
+  final int? id;
   bool read;
 }
+
+NCat _notifCat(String? raw) => switch (raw) {
+      'absensi' => NCat.absensi,
+      'tugas' => NCat.tugas,
+      'gaji' => NCat.gaji,
+      'pengajuan' => NCat.pengajuan,
+      'keamanan' => NCat.keamanan,
+      'pengingat' => NCat.pengingat,
+      'revisi' => NCat.revisi,
+      _ => NCat.info,
+    };
+
+bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
 
 List<Notif> seedNotifs() => [
       Notif(NCat.keamanan, 'Peringatan keamanan', 'Login dari perangkat baru (Xiaomi Redmi 12) ditolak.', '08.31', 'HARI INI'),
