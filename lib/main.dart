@@ -174,6 +174,7 @@ class _SessionGateState extends State<SessionGate> {
     }
     unawaited(app.fetchProfile());
     unawaited(app.fetchTasks());
+    unawaited(app.fetchNotifications());
 
     if (!mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {

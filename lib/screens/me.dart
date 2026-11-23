@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -825,9 +827,14 @@ class _NotifsState extends State<Notifs> {
   int filter = 0;
   static const filters = ['Semua', 'Absensi', 'Tugas', 'Gaji', 'Pengajuan'];
 
+  @override
+  void initState() {
+    super.initState();
+    unawaited(app.fetchNotifications());
+  }
+
   void open(Notif n) {
-    n.read = true;
-    app.touch();
+    unawaited(app.markNotificationRead(n));
     switch (n.cat) {
       case NCat.tugas:
         push(context, TaskDetail(app.tasks[1]), root: true);
@@ -889,9 +896,18 @@ class _NotifsState extends State<Notifs> {
                 TextButton(
                   onPressed: app.unread == 0
                       ? null
-                      : () {
-                          final before = app.markAllRead();
-                          toast(context, 'Semua notifikasi ditandai dibaca', action: 'Batalkan', onAction: () => app.restoreRead(before), aboveNav: true);
+                      : () async {
+                          try {
+                            final before = await app.markAllNotificationsRead();
+                            if (!context.mounted) return;
+                            toast(context, 'Semua notifikasi ditandai dibaca', action: 'Batalkan', onAction: () => app.restoreRead(before), aboveNav: true);
+                          } on ApiError catch (e) {
+                            if (!context.mounted) return;
+                            toast(context, e.message, icon: LucideIcons.alertCircle);
+                          } catch (_) {
+                            if (!context.mounted) return;
+                            toast(context, 'Tidak dapat menandai notifikasi. Periksa koneksi.', icon: LucideIcons.alertCircle);
+                          }
                         },
                   child: const Text('Tandai semua dibaca'),
                 ),

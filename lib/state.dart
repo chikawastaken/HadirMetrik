@@ -215,6 +215,47 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> fetchNotifications() async {
+    try {
+      final res = await Api.notificationList();
+      final list = res['notifications'] as List? ?? [];
+      notifs.clear();
+      for (final item in list) {
+        if (item is Map<String, dynamic>) {
+          notifs.add(Notif.fromApi(item));
+        }
+      }
+      notifyListeners();
+    } catch (_) {
+      // Keep the cached inbox on failure; app stays offline-capable.
+    }
+  }
+
+  /// Marks a notification read locally first, then syncs to the server.
+  Future<void> markNotificationRead(Notif n) async {
+    n.read = true;
+    notifyListeners();
+    final id = n.id;
+    if (id == null) return;
+    try {
+      await Api.notificationRead(id);
+    } catch (_) {
+      // The local read flag stays; the next fetch reconciles with the server.
+    }
+  }
+
+  /// Marks every notification read and returns the previous flags for undo.
+  Future<List<bool>> markAllNotificationsRead() async {
+    final before = markAllRead();
+    try {
+      await Api.notificationReadAll();
+    } catch (_) {
+      restoreRead(before);
+      rethrow;
+    }
+    return before;
+  }
+
   /// Loads template versions from the API. Failures stay non-fatal so the
   /// profile still renders while the device is offline.
   Future<void> loadFaceState() async {
@@ -570,6 +611,7 @@ class AppState extends ChangeNotifier {
     clockNotice = null;
     clockBusy = false;
     syncing = false;
+    notifs.clear(); // inbox milik akun sebelumnya
     // Queued attendance belongs to the signed-in account; never let the next
     // account sync it. On session expiry we keep it so the same employee can
     // flush after signing in again. Await so a fast re-login cannot race the clear.

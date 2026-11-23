@@ -424,4 +424,17 @@ class Api {
         'decision': decision,
         'note': ?note,
       });
+
+  // ------------------------------------------------------------ Phase 8
+
+  static Future<Map<String, dynamic>> notificationList({int? limit}) async {
+    final query = limit == null ? '' : '?limit=$limit';
+    return get('/notifications$query');
+  }
+
+  static Future<Map<String, dynamic>> notificationRead(int id) =>
+      post('/notifications/$id/read', {});
+
+  static Future<Map<String, dynamic>> notificationReadAll() =>
+      post('/notifications/read-all', {});
 }
