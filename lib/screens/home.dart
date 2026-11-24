@@ -383,22 +383,16 @@ class _ClockButtonState extends State<_ClockButton> with SingleTickerProviderSta
   }
 }
 
-/// Long-press the clock: pick a scenario and a time to walk through every state.
+/// Long-press the clock: pick a scenario to walk through every state.
 void demoSheet(BuildContext context) => showSheet(
       context,
       (ctx) => ListenableBuilder(
         listenable: app,
         builder: (ctx, _) => ListView(shrinkWrap: true, padding: const EdgeInsets.only(bottom: 16), children: [
-          const SheetHead('Mode demo', subtitle: 'Simulasikan kondisi perangkat dan waktu'),
+          const SheetHead('Mode demo', subtitle: 'Simulasikan kondisi perangkat'),
           Padding(
             padding: pagePad,
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Jam', style: T.title),
-              gap8,
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final (h, m) in const [(7, 52), (8, 12), (17, 5), (19, 10)]) Chip2('${h.toString().padLeft(2, '0')}.${m.toString().padLeft(2, '0')}', selected: app.now.hour == h && app.now.minute == m, onTap: () => app.setTime(h, m)),
-              ]),
-              gap16,
               Btn('Reset absen hari ini', kind: BtnKind.light, icon: LucideIcons.rotateCcw, onTap: () {
                 app
                   ..clockIn = null

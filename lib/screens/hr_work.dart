@@ -14,7 +14,12 @@ import 'hr_people.dart';
 import 'leave.dart';
 import 'tasks.dart';
 
-const _today = '7 Okt';
+String get _today => '${app.now.day} ${bulanPendek[app.now.month - 1]}';
+
+DateTime _dayFromNow(int days) {
+  final n = app.now;
+  return DateTime(n.year, n.month, n.day + days);
+}
 
 /// HR's task list: its own tasks plus Rina's tasks from Sari that wait for review.
 List<TaskItem> hrTaskList() => [
@@ -114,7 +119,8 @@ class _CreateTaskState extends State<CreateTask> {
   late final picked = <String>{?widget.assignee};
   final checklist = <String>[];
   final remind = {0};
-  int mode = 0, div = 0, prio = 1, due = 9;
+  int mode = 0, div = 0, prio = 1;
+  DateTime due = _dayFromNow(2);
   bool proof = true, tried = false, busy = false;
 
   @override
@@ -138,7 +144,44 @@ class _CreateTaskState extends State<CreateTask> {
   List<Person> get people => app.hrEmployees.isNotEmpty ? app.hrEmployees : employees;
 
   List<String> get assignees => mode == 1 ? [for (final p in people.where((p) => p.division == divisions[div])) p.name] : picked.toList();
-  String get deadline => '${tglPendek(DateTime(2026, 10, due))}, 17.00';
+  String get deadline => '${tglPendek(due)}, 17.00';
+
+  void pickDue() {
+    final today = _dayFromNow(0);
+    final first = DateTime(today.year, today.month), last = DateTime(today.year, today.month + 12);
+    var month = DateTime(due.year, due.month);
+    showSheet(
+      context,
+      (ctx) => StatefulBuilder(
+        builder: (ctx, set) => Column(mainAxisSize: MainAxisSize.min, children: [
+          const SheetHead('Pilih tenggat'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: Column(children: [
+              Row(children: [
+                CircleBtn(LucideIcons.chevronLeft, size: 40, bg: C.sageSoft, tooltip: 'Bulan sebelumnya', onTap: month.isAfter(first) ? () => set(() => month = DateTime(month.year, month.month - 1)) : null),
+                Expanded(child: Text('${bulan[month.month - 1]} ${month.year}', textAlign: TextAlign.center, style: T.h3)),
+                CircleBtn(LucideIcons.chevronRight, size: 40, bg: C.sageSoft, tooltip: 'Bulan berikutnya', onTap: month.isBefore(last) ? () => set(() => month = DateTime(month.year, month.month + 1)) : null),
+              ]),
+              gap12,
+              MonthGrid(
+                year: month.year,
+                month: month.month,
+                today: month == first ? today.day : null,
+                selected: due.year == month.year && due.month == month.month ? due.day : null,
+                onTap: (d) {
+                  final v = DateTime(month.year, month.month, d);
+                  if (v.isBefore(today)) return;
+                  setState(() => due = v);
+                  Navigator.pop(ctx);
+                },
+              ),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
 
   Future<void> create() async {
     setState(() => tried = true);
@@ -180,7 +223,7 @@ class _CreateTaskState extends State<CreateTask> {
         assigneeIds: ids,
         requiresPhotoProof: proof,
         checklistTemplate: template,
-        dueAt: DateTime(2026, 10, due, 17).toIso8601String(),
+        dueAt: DateTime(due.year, due.month, due.day, 17).toIso8601String(),
       );
       final taskJson = res['task'] as Map<String, dynamic>?;
       if (taskJson != null) {
@@ -207,8 +250,8 @@ class _CreateTaskState extends State<CreateTask> {
           status: TaskStatus.proses,
           deadline: deadline,
           from: 'Sari Wulandari',
-          remaining: 'Sisa ${due - 7} hari',
-          created: 'Rab, 7 Okt 2026',
+          remaining: 'Sisa ${due.difference(_dayFromNow(0)).inDays} hari',
+          created: '${tglPendek(app.now)} ${app.now.year}',
           checklist: [for (final c in checklist) CheckItem(c)],
           assignees: who,
           division: personByName(who.first).division,
@@ -281,20 +324,7 @@ class _CreateTaskState extends State<CreateTask> {
           small: 'Tenggat',
           value: deadline,
           icon: LucideIcons.calendar,
-          onTap: () => showSheet(
-            context,
-            (ctx) => Column(mainAxisSize: MainAxisSize.min, children: [
-              const SheetHead('Pilih tenggat'),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                child: MonthGrid(year: 2026, month: 10, today: 7, selected: due, onTap: (d) {
-                  if (d < 7) return;
-                  setState(() => due = d);
-                  Navigator.pop(ctx);
-                }),
-              ),
-            ]),
-          ),
+          onTap: pickDue,
         ),
         const Overline('CHECKLIST'),
         for (final (i, c) in checklist.indexed)
@@ -612,7 +642,7 @@ class _TaskReviewState extends State<TaskReview> {
                 gap8,
                 CircleBtn(LucideIcons.send, bg: C.primary, fg: Colors.white, tooltip: 'Kirim', onTap: () {
                   if (comment.text.trim().isEmpty) return;
-                  t.comments.add(Comment('Sari Wulandari', comment.text.trim(), 'Rab ${hm(app.now)}'));
+                  t.comments.add(Comment('Sari Wulandari', comment.text.trim(), '${hariPendek[app.now.weekday - 1]} ${hm(app.now)}'));
                   comment.clear();
                   app.touch();
                 }),

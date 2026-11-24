@@ -343,7 +343,7 @@ class _TaskDetailState extends State<TaskDetail> {
       }
     }
 
-    setState(() => t.comments.add(Comment('Kamu', v, 'Rab ${hm(app.now)}')));
+    setState(() => t.comments.add(Comment('Kamu', v, '${hariPendek[app.now.weekday - 1]} ${hm(app.now)}')));
     app.touch();
   }
 
