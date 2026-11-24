@@ -124,8 +124,11 @@ class Api {
   static Future<Map<String, dynamic>> clockIn() async => post('/clock-in', {});
   static Future<Map<String, dynamic>> clockOut() async => post('/clock-out', {});
   static Future<Map<String, dynamic>> getSchedule() async => get('/schedule');
-  static Future<Map<String, dynamic>> getHistory() async => get('/history');
-  static Future<Map<String, dynamic>> correctHistory(int id) async => patch('/history/$id/correction', {});
+  static Future<List<dynamic>> getHistory() async => _getList('/history');
+  static Future<Map<String, dynamic>> correctHistory(int id, String reason) async => patch('/history/$id/correction', {'reason': reason});
+
+  static Future<List<dynamic>> _getList(String path) async =>
+      _handleList(await client.get(Uri.parse('$baseUrl$path'), headers: _headers).timeout(const Duration(seconds: 15)));
 
   /// Reserves the invitation for the signed-in employee (architecture §4.8).
   static Future<Map<String, dynamic>> acceptInvitation(String token) => post('/invitations/$token/accept', {});

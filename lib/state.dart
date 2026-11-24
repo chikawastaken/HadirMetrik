@@ -102,6 +102,18 @@ class AppState extends ChangeNotifier {
   final payroll = seedPayroll();
   final newEmployees = <Person>[];
   final hrEmployees = <Person>[];
+
+  /// Name of the shift assigned to the signed-in employee.
+  String? shiftLabel;
+
+  Future<void> loadSchedule() async {
+    try {
+      final shift = (await Api.getSchedule())['shift'];
+      shiftLabel = shift is Map ? shift['name'] as String? : null;
+      notifyListeners();
+    } catch (_) {}
+  }
+
   int payrollStep = 1; // 0 Draft, 1 Ditinjau, 2 Disetujui, 3 Dipublikasikan
 
   int get unread => notifs.where((n) => !n.read).length;
@@ -116,6 +128,7 @@ class AppState extends ChangeNotifier {
       profile = EmployeeProfile.fromJson(res);
       notifyListeners();
     } catch (_) {}
+    await loadSchedule();
   }
 
   Future<void> fetchTasks() async {
