@@ -206,8 +206,13 @@ class LeaveForm extends StatefulWidget {
 
 class _LeaveFormState extends State<LeaveForm> {
   late var type = widget.type;
-  late DateTime start = type == LeaveType.sakit ? DateTime(2026, 10, 6) : DateTime(2026, 10, 8);
-  late DateTime end = type == LeaveType.sakit ? DateTime(2026, 10, 8) : start;
+  static DateTime _fromToday(int days) {
+    final n = app.now;
+    return DateTime(n.year, n.month, n.day + days);
+  }
+
+  late DateTime start = _fromToday(type == LeaveType.sakit ? -1 : 1);
+  late DateTime end = type == LeaveType.sakit ? _fromToday(1) : start;
   int durasi = 0;
   int special = 0;
   late final reason = TextEditingController(text: type == LeaveType.sakit ? _sakitReason : '');
@@ -270,7 +275,10 @@ class _LeaveFormState extends State<LeaveForm> {
       );
 
   void pickDate(bool isStart) {
-    var month = (isStart ? start : end).month;
+    final now = app.now;
+    final first = DateTime(now.year, now.month), last = DateTime(now.year, now.month + 12);
+    final current = isStart ? start : end;
+    var month = DateTime(current.year, current.month);
     showSheet(
       context,
       (ctx) => StatefulBuilder(
@@ -280,18 +288,18 @@ class _LeaveFormState extends State<LeaveForm> {
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             child: Column(children: [
               Row(children: [
-                CircleBtn(LucideIcons.chevronLeft, size: 40, bg: C.sageSoft, tooltip: 'Bulan sebelumnya', onTap: month > 10 ? () => set(() => month--) : null),
-                Expanded(child: Text('${bulan[month - 1]} 2026', textAlign: TextAlign.center, style: T.h3)),
-                CircleBtn(LucideIcons.chevronRight, size: 40, bg: C.sageSoft, tooltip: 'Bulan berikutnya', onTap: month < 12 ? () => set(() => month++) : null),
+                CircleBtn(LucideIcons.chevronLeft, size: 40, bg: C.sageSoft, tooltip: 'Bulan sebelumnya', onTap: month.isAfter(first) ? () => set(() => month = DateTime(month.year, month.month - 1)) : null),
+                Expanded(child: Text('${bulan[month.month - 1]} ${month.year}', textAlign: TextAlign.center, style: T.h3)),
+                CircleBtn(LucideIcons.chevronRight, size: 40, bg: C.sageSoft, tooltip: 'Bulan berikutnya', onTap: month.isBefore(last) ? () => set(() => month = DateTime(month.year, month.month + 1)) : null),
               ]),
               gap12,
               MonthGrid(
-                year: 2026,
-                month: month,
-                today: month == 10 ? 7 : null,
-                selected: (isStart ? start : end).month == month ? (isStart ? start : end).day : null,
+                year: month.year,
+                month: month.month,
+                today: month == first ? now.day : null,
+                selected: current.year == month.year && current.month == month.month ? current.day : null,
                 onTap: (d) {
-                  final v = DateTime(2026, month, d);
+                  final v = DateTime(month.year, month.month, d);
                   setState(() {
                     if (isStart) {
                       start = v;
@@ -637,7 +645,7 @@ class Letter extends StatelessWidget {
         Align(
           alignment: Alignment.centerRight,
           child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text('Sleman, 7 Oktober 2026', style: T.caption),
+            Text('Sleman, ${app.now.day} ${bulan[app.now.month - 1]} ${app.now.year}', style: T.caption),
             gap8,
             Row(mainAxisSize: MainAxisSize.min, children: [const Icon(LucideIcons.badgeCheck, size: 16, color: C.accent), gap4, Text('Ditandatangani digital', style: T.small.copyWith(color: C.accent))]),
             gap4,

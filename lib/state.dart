@@ -70,15 +70,7 @@ class AppState extends ChangeNotifier {
       faceTemplates.where((template) => template.isActive || template.isPending).firstOrNull ??
       latestFaceTemplate;
 
-  // Demo clock: the prototype day is Rabu, 7 Oktober 2026, starting 07.52.
-  DateTime _base = DateTime(2026, 10, 7, 7, 52);
-  DateTime _anchor = DateTime.now();
-  DateTime get now => _base.add(DateTime.now().difference(_anchor));
-  void setTime(int h, int m) {
-    _base = DateTime(2026, 10, 7, h, m);
-    _anchor = DateTime.now();
-    notifyListeners();
-  }
+  DateTime get now => DateTime.now();
 
   DateTime? clockIn, clockOut;
   double faceScore = 97.4;

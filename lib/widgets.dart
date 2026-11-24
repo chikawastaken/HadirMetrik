@@ -764,8 +764,8 @@ String fmtRange(DateTimeRange r) => '${r.start.day} ${_bln[r.start.month - 1]} â
 Future<DateTimeRange?> pickRange(BuildContext context, {DateTimeRange? initial}) => showDateRangePicker(
       context: context,
       firstDate: DateTime(2025, 1, 1),
-      lastDate: DateTime(2026, 12, 31),
-      currentDate: DateTime(2026, 10, 7),
+      lastDate: DateTime(DateTime.now().year, 12, 31),
+      currentDate: DateTime.now(),
       initialDateRange: initial,
       helpText: 'Pilih rentang tanggal',
       saveText: 'Simpan',
