@@ -746,7 +746,7 @@ class _EmployeeDetailState extends State<EmployeeDetail> {
               toast(context, e.message, icon: LucideIcons.triangleAlert);
             } catch (_) {
               if (!mounted) return;
-              toast(context, 'Undangan berhasil diperbarui.');
+              toast(context, 'Undangan gagal dikirim. Periksa koneksi lalu coba lagi.', icon: LucideIcons.triangleAlert);
             }
           }),
           MenuRow(LucideIcons.smartphone, 'Reset perangkat', subtitle: 'Karyawan harus login ulang di perangkat baru', onTap: () async {
