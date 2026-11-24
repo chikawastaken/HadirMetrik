@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../api.dart';
 import '../data.dart';
 import '../main.dart';
+import '../models/employee_profile.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../visuals.dart';
@@ -18,6 +19,43 @@ import 'tasks.dart';
 String _money(int v) => app.hideSalary ? 'Rp •••••••' : rp(v);
 
 // ---------------------------------------------------------------- B12 profil
+
+void _editPhone(BuildContext context) {
+  final c = TextEditingController(text: app.profile?.employee.phoneE164 ?? '');
+  showSheet(
+    context,
+    (ctx) => Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const SheetHead('Ubah nomor telepon', subtitle: 'Data lain hanya bisa diubah HR'),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(children: [
+            Field(label: 'Nomor telepon', hint: '+6281234567890', icon: LucideIcons.phone, controller: c),
+            gap16,
+            Btn('Simpan', onTap: () async {
+              final phone = c.text.trim();
+              if (!RegExp(r'^\+[1-9]\d{1,14}$').hasMatch(phone)) {
+                toast(context, 'Gunakan format +628xxxxxxxxxx', icon: LucideIcons.triangleAlert);
+                return;
+              }
+              Navigator.pop(ctx);
+              try {
+                app.profile = EmployeeProfile.fromJson(await Api.updateProfile({'phone_e164': phone}));
+                app.touch();
+                if (context.mounted) toast(context, 'Nomor telepon diperbarui', aboveNav: true);
+              } on ApiError catch (e) {
+                if (context.mounted) toast(context, e.message, icon: LucideIcons.triangleAlert);
+              } catch (_) {
+                if (context.mounted) toast(context, 'Tidak bisa terhubung ke server', icon: LucideIcons.triangleAlert);
+              }
+            }),
+          ]),
+        ),
+      ]),
+    ),
+  );
+}
 
 class Profile extends StatelessWidget {
   const Profile({super.key});
@@ -113,6 +151,22 @@ class Profile extends StatelessWidget {
                 gap8,
                 const Pill('Terverifikasi', icon: LucideIcons.badgeCheck),
               ]),
+            ]),
+          ),
+          gap12,
+          AppCard(
+            radius: 20,
+            onTap: () => _editPhone(context),
+            child: Row(children: [
+              const IconTile(LucideIcons.phone, size: 36),
+              gap12,
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Nomor telepon', style: T.caption),
+                  ListenableBuilder(listenable: app, builder: (_, _) => Text(app.profile?.employee.phoneE164 ?? 'Belum diisi', style: T.title)),
+                ]),
+              ),
+              const Icon(LucideIcons.pencil, size: 16, color: C.text3),
             ]),
           ),
           gap12,
@@ -525,18 +579,88 @@ class History extends StatefulWidget {
 }
 
 class _HistoryState extends State<History> {
-  int filter = 0, month = 10;
+  final now = DateTime.now();
+  late int month = now.month;
+  int filter = 0;
+  List<AttDay> records = [];
 
-  bool isToday(AttDay d) => d.month == 10 && d.day == 7;
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
 
-  AttDay? get today => app.clockIn == null ? null : AttDay(7, app.lateMinutes(app.clockIn!) > 0 ? Att.terlambat : Att.hadir, inT: hm(app.clockIn!), outT: app.clockOut == null ? null : hm(app.clockOut!), lateMin: app.lateMinutes(app.clockIn!).clamp(0, 999));
+  bool isToday(AttDay d) => d.year == now.year && d.month == now.month && d.day == now.day;
 
-  List<AttDay> get days => month == 10 ? [?today, ...octDays.reversed] : pastDays(month).reversed.toList();
+  // ponytail: month paging stays inside the current year, and /history returns the latest 30 records.
+  List<AttDay> get days => records.where((d) => d.year == now.year && d.month == month).toList();
+
+  static AttDay _toDay(Map<String, dynamic> r) {
+    String hm(DateTime t) => '${t.hour.toString().padLeft(2, '0')}.${t.minute.toString().padLeft(2, '0')}';
+    final i = DateTime.tryParse(r['clock_in'] ?? '')?.toLocal();
+    final o = DateTime.tryParse(r['clock_out'] ?? '')?.toLocal();
+    final d = i ?? DateTime.parse((r['date'] as String).substring(0, 10));
+    final reason = r['correction_reason'] as String?;
+    return AttDay(d.day, i == null ? Att.absen : Att.hadir,
+        month: d.month,
+        year: d.year,
+        inT: i == null ? null : hm(i),
+        outT: o == null ? null : hm(o),
+        recordId: r['id'],
+        pendingReview: r['status'] == 'pending_review',
+        note: reason == null ? null : 'Alasan koreksi: $reason');
+  }
+
+  Future<void> load() async {
+    try {
+      final rows = await Api.getHistory();
+      if (mounted) setState(() => records = [for (final r in rows.cast<Map<String, dynamic>>()) _toDay(r)]);
+    } catch (_) {
+      if (mounted) toast(context, 'Riwayat gagal dimuat', icon: LucideIcons.triangleAlert);
+    }
+  }
+
+  void correctionSheet(AttDay d) {
+    final c = TextEditingController();
+    showSheet(
+      context,
+      (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          SheetHead('Ajukan koreksi', subtitle: tanggal(d.date)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: Column(children: [
+              Field(label: 'Alasan koreksi', hint: 'Contoh: lupa absen keluar', controller: c, maxLines: 3),
+              gap16,
+              Btn('Kirim Pengajuan', onTap: () async {
+                final reason = c.text.trim();
+                if (reason.length < 5) {
+                  toast(context, 'Alasan minimal 5 karakter', icon: LucideIcons.triangleAlert);
+                  return;
+                }
+                Navigator.pop(ctx);
+                try {
+                  await Api.correctHistory(d.recordId!, reason);
+                  if (mounted) toast(context, 'Pengajuan koreksi dikirim ke HR', aboveNav: true);
+                  await load();
+                } on ApiError catch (e) {
+                  if (mounted) toast(context, e.message, icon: LucideIcons.triangleAlert);
+                } catch (_) {
+                  if (mounted) toast(context, 'Tidak bisa terhubung ke server', icon: LucideIcons.triangleAlert);
+                }
+              }),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
 
   void daySheet(AttDay d) => showSheet(
         context,
         (ctx) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SheetHead(tanggal(d.date), subtitle: d.status == Att.cuti ? 'Cuti Tahunan · disetujui' : 'Shift Reguler 08.00 - 17.00'),
+          SheetHead(tanggal(d.date), subtitle: d.status == Att.cuti ? 'Cuti Tahunan · disetujui' : app.shiftLabel ?? 'Tanpa jadwal shift'),
           Flexible(
             child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(20, 0, 20, 20), children: [
               if (d.status == Att.cuti)
@@ -555,22 +679,17 @@ class _HistoryState extends State<History> {
                   ],
                 ]),
                 gap12,
-                const MapBox(height: 120, pins: [MapPin(Alignment(.1, -.1), C.accent)]),
-                gap12,
-                Wrap(spacing: 8, runSpacing: 8, children: const [
-                  Pill('Wajah cocok 98% [DL]', icon: LucideIcons.scanFace),
-                  Pill('Lokasi asli', icon: LucideIcons.mapPin),
-                  Pill('Perangkat terikat', icon: LucideIcons.smartphone),
-                  Pill('Liveness OK', icon: LucideIcons.eye),
-                ]),
                 if (d.note != null) ...[gap12, Banner2('Catatan', body: d.note, tone: Tone.neutral, icon: LucideIcons.stickyNote)],
                 if (d.lateMin > 0) ...[gap12, Banner2('Potongan keterlambatan: Rp 25.000', body: 'Terlambat ${d.lateMin} menit dari jadwal 08.00.', tone: Tone.warning, icon: LucideIcons.clock)],
                 if (d.overtime > 0) ...[gap12, Banner2('Lembur ${d.overtime} jam', body: 'Disetujui Dimas Ardiansyah, masuk slip Oktober.', tone: Tone.info, icon: LucideIcons.timer)],
                 gap16,
-                Btn('Ajukan Koreksi Kehadiran', kind: BtnKind.soft, icon: LucideIcons.pencil, onTap: () {
-                  Navigator.pop(ctx);
-                  toast(context, 'Pengajuan koreksi dikirim ke Dimas Ardiansyah.', aboveNav: true);
-                }),
+                if (d.pendingReview)
+                  const Banner2('Koreksi sedang ditinjau HR', tone: Tone.warning, icon: LucideIcons.clock)
+                else
+                  Btn('Ajukan Koreksi Kehadiran', kind: BtnKind.soft, icon: LucideIcons.pencil, onTap: () {
+                    Navigator.pop(ctx);
+                    correctionSheet(d);
+                  }),
               ],
             ]),
           ),
@@ -584,23 +703,23 @@ class _HistoryState extends State<History> {
           final all = days;
           final shown = switch (filter) { 1 => all.where((d) => d.status == Att.hadir), 2 => all.where((d) => d.status == Att.terlambat), 3 => all.where((d) => d.status == Att.cuti), _ => all }.toList();
           final count = {for (final a in Att.values) a: all.where((d) => d.status == a).length};
-          final total = all.fold(Duration.zero, (a, d) => a + (isToday(d) ? app.worked : d.worked));
+          final total = all.fold(Duration.zero, (a, d) => a + d.worked);
           return Screen(
             inShell: true,
-            header: PageHeader('Riwayat Kehadiran', subtitle: '${bulan[month - 1]} 2026', back: true),
+            header: PageHeader('Riwayat Kehadiran', subtitle: '${bulan[month - 1]} ${now.year}', back: true),
             children: [
               AppCard(
                 child: Column(children: [
                   Row(children: [
-                    CircleBtn(LucideIcons.chevronLeft, size: 40, bg: C.sageSoft, tooltip: 'Bulan sebelumnya', onTap: month > 7 ? () => setState(() => month--) : null),
-                    Expanded(child: Text('${bulan[month - 1]} 2026', textAlign: TextAlign.center, style: T.h3)),
-                    CircleBtn(LucideIcons.chevronRight, size: 40, bg: C.sageSoft, tooltip: 'Bulan berikutnya', onTap: month < 10 ? () => setState(() => month++) : null),
+                    CircleBtn(LucideIcons.chevronLeft, size: 40, bg: C.sageSoft, tooltip: 'Bulan sebelumnya', onTap: month > 1 ? () => setState(() => month--) : null),
+                    Expanded(child: Text('${bulan[month - 1]} ${now.year}', textAlign: TextAlign.center, style: T.h3)),
+                    CircleBtn(LucideIcons.chevronRight, size: 40, bg: C.sageSoft, tooltip: 'Bulan berikutnya', onTap: month < now.month ? () => setState(() => month++) : null),
                   ]),
                   gap12,
                   MonthGrid(
-                    year: 2026,
+                    year: now.year,
                     month: month,
-                    today: month == 10 ? 7 : null,
+                    today: month == now.month ? now.day : null,
                     dots: {for (final d in all) d.day: d.status.dot},
                     onTap: (day) {
                       final d = all.where((x) => x.day == day).firstOrNull;
@@ -656,7 +775,7 @@ class _HistoryState extends State<History> {
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(d.status == Att.cuti ? 'Cuti Tahunan' : '${d.inT} → ${d.outT ?? 'sekarang'}', style: T.title),
-                          Text(d.status == Att.cuti ? 'Disetujui' : (isToday(d) && d.outT == null ? 'Sedang bekerja · ${dur(app.worked)}' : dur(d.worked)), style: T.caption),
+                          Text(d.status == Att.cuti ? 'Disetujui' : (isToday(d) && d.outT == null ? 'Sedang bekerja' : dur(d.worked)), style: T.caption),
                         ]),
                       ),
                       Pill(d.status.label, icon: d.status.icon, tone: d.status.tone),

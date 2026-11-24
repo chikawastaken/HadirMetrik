@@ -128,12 +128,14 @@ enum Att {
 }
 
 class AttDay {
-  const AttDay(this.day, this.status, {this.month = 10, this.inT, this.outT, this.note, this.lateMin = 0, this.overtime = 0});
-  final int day, month;
+  const AttDay(this.day, this.status, {this.month = 10, this.year = 2026, this.inT, this.outT, this.note, this.lateMin = 0, this.overtime = 0, this.recordId, this.pendingReview = false});
+  final int day, month, year;
+  final int? recordId;
+  final bool pendingReview;
   final Att status;
   final String? inT, outT, note;
   final int lateMin, overtime;
-  DateTime get date => DateTime(2026, month, day);
+  DateTime get date => DateTime(year, month, day);
   Duration get worked {
     if (inT == null || outT == null) return Duration.zero;
     Duration p(String s) => Duration(hours: int.parse(s.substring(0, 2)), minutes: int.parse(s.substring(3)));

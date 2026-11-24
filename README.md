@@ -1,6 +1,6 @@
-# hadirmetrik
+# HadirMetrik
 
-A new Flutter project.
+Aplikasi Flutter HadirMetrik untuk karyawan dan HR.
 
 ## Menjalankan dengan backend lokal
 
@@ -69,16 +69,27 @@ Saat link dibuka:
 - aplikasi sudah berjalan dan belum login → layar **Buat Kata Sandi**;
 - aplikasi sudah login → layar konfirmasi undangan.
 
-## Getting Started
+## Status integrasi layar
 
-This project is a starting point for a Flutter application.
+Per 2026-11-24. Kontrak API: `docs/openapi/app.yaml` di repo backend.
 
-A few resources to get you started if this is your first Flutter project:
+| Area | Status |
+|---|---|
+| Login, sesi, undangan, ganti kata sandi | API |
+| Profil, ubah telepon, riwayat dan koreksi presensi | API |
+| Absen masuk/keluar, outbox offline | API; verifikasi wajah belum memakai model nyata |
+| Tugas karyawan dan HR | API |
+| Cuti/izin/lembur dan persetujuan HR | API, tanpa lampiran |
+| Notifikasi | API, tanpa push dan tanpa "belum dibaca" di server |
+| Karyawan HR: daftar, tambah, reset kata sandi, kirim ulang undangan | API |
+| Karyawan HR: kehadiran di detail, monitor langsung, insiden | Mock |
+| Gaji dan slip (`me.dart`), penggajian HR (`hr_main.dart`) | Mock, menunggu Phase 7 backend |
+| Dashboard, laporan, statistik HR (`hr_main.dart`) | Mock, menunggu Phase 8 backend |
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+Pekerjaan yang endpoint-nya sudah ada tetapi belum dipakai layar:
+`leaveResubmit`, `taskStart`, `taskAttachment`, `hrTaskCancel`, `hrTaskOptions`,
+`hrEmployeeDetail`, `hrRevokeInvitation`, `getFaceEnrollment`.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Pekerjaan yang menunggu backend: lampiran pengajuan, riwayat keputusan HR,
+keputusan koreksi presensi, notifikasi "tandai belum dibaca", push, gaji, dan
+dashboard HR.
